@@ -5,6 +5,7 @@ add_executable(
     InvertedPressureTest.cpp
     ReflectiveBoundaryTest.cpp
     StormerVerletTest.cpp
+    ForceGroupInterfaceTest.cpp
 )
 
 target_link_libraries(

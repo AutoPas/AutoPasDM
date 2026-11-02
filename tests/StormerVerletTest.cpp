@@ -3,7 +3,7 @@
 #include <array>
 #include <vector>
 
-#include "autopasdm/integration/StormerVerlet.h"
+#include "autopasdm/timeintegration/StormerVerlet.h"
 
 namespace {
 

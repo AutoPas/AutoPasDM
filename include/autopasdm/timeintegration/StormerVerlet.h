@@ -5,7 +5,7 @@
 #include <type_traits>
 
 #include "autopas/utils/ArrayMath.h"
-#include "autopasdm/integration/TimeIntegrator.h"
+#include "autopasdm/timeintegration/TimeIntegrator.h"
 
 namespace autopasdm::timeintegration {
 
