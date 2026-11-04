@@ -317,12 +317,6 @@ class Simulation {
                                                  long maxTime = 0ul);
 
   /**
-   * Updates the position of particles in the local AutoPas container. In addition, the oldForce is set to the value of
-   * the current forces and the force buffers of the particles are reset to the global force.
-   */
-  void updatePositionsAndResetForces();
-
-  /**
    * Update the quaternion orientation of the particles in the local AutoPas container.
    */
   void updateQuaternions();
@@ -332,11 +326,6 @@ class Simulation {
    * is used).
    */
   void updateInteractionForces();
-
-  /**
-   * Updates the velocities of particles in the local AutoPas container.
-   */
-  void updateVelocities();
 
   /**
    * Updates the angular velocities of the particles in the local AutoPas container.

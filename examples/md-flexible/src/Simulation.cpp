@@ -12,6 +12,8 @@
 #include "TypeDefinitions.h"
 #include "autopas/AutoPasDecl.h"
 #include "autopas/utils/WrapOpenMP.h"
+#include "autopasdm/timeintegration/StormerVerlet.h"
+#include "integration/MDFlexibleParticleOperations.h"
 
 // Declare the main AutoPas class and the computeInteractions() methods with all used functors as extern template
 // instantiation. They are instantiated in the respective cpp file inside the templateInstantiations folder.
@@ -254,35 +256,18 @@ void Simulation::run() {
     maximumSigma = std::max(maximumSigma, sigma);
   }
 
-  while (needsMoreIterations()) {
-    if (_vtkWriter.has_value() and _iteration % _configuration.vtkWriteFrequency.value == 0) {
-      _timers.vtk.start();
-      _vtkWriter->recordTimestep(_iteration, *_autoPasDMContainer);
-      _timers.vtk.stop();
-    }
+  // Updated for each iteration and read by the force evaluator below.
+  bool shouldLoadBalance = false;
 
-    _timers.computationalLoad.start();
-    if (_configuration.deltaT.value != 0 and not _simulationIsPaused) {
-      updatePositionsAndResetForces();
-#if MD_FLEXIBLE_MODE == MULTISITE
-      updateQuaternions();
-#endif
-    }
-
-    // Match md-flexible's adaptive-grid cadence. The application measures the local
-    // computational work before distributed synchronization and only requests a balancing
-    // step at the configured interval. AutoPasDM owns the actual geometry update,
-    // resize, migration, and halo exchange.
-    const bool shouldLoadBalance = _configuration.loadBalancer.value == LoadBalancerOption::invertedPressure and
-                                   _configuration.deltaT.value != 0 and not _simulationIsPaused and
-                                   _iteration % _configuration.loadBalancingInterval.value == 0;
-
+  // Prepare the distributed particles and calculate all configured forces.
+  // This callback can later be passed to the time integrator.
+  const auto forceEvaluator = [this, maximumSigma, &shouldLoadBalance](auto &particles) {
     _timers.distributedSynchronization.start();
     if (shouldLoadBalance) {
       const auto computationalLoad = static_cast<double>(_timers.computationalLoad.stop());
-      _autoPasDMContainer->prepareInteractions(computationalLoad);
+      particles.prepareInteractions(computationalLoad);
     } else {
-      _autoPasDMContainer->prepareInteractions();
+      particles.prepareInteractions();
     }
     _timers.distributedSynchronization.stop();
 
@@ -291,19 +276,59 @@ void Simulation::run() {
     _timers.reflectParticlesAtBoundaries.stop();
 
     if (shouldLoadBalance) {
-      // Continue measuring application-side computation after the communication phase.
+      // Continue measuring application-side work after synchronization.
       _timers.computationalLoad.start();
     }
 
     updateInteractionForces();
+  };
+
+  MDFlexibleParticleOperations particleOperations{
+      *_configuration.getParticlePropertiesLibrary(), _configuration.globalForce.value,
+      _configuration.verletSkinRadius.value,          _configuration.verletRebuildFrequency.value,
+      _configuration.fastParticlesThrow.value,
+  };
+  autopasdm::timeintegration::StormerVerlet integrator;
+
+  while (needsMoreIterations()) {
+    if (_vtkWriter.has_value() and _iteration % _configuration.vtkWriteFrequency.value == 0) {
+      _timers.vtk.start();
+      _vtkWriter->recordTimestep(_iteration, *_autoPasDMContainer);
+      _timers.vtk.stop();
+    }
+
+    _timers.computationalLoad.start();
+
+    // Match md-flexible's adaptive-grid cadence. The application measures the local
+    // computational work before distributed synchronization and only requests a balancing
+    // step at the configured interval. AutoPasDM owns the actual geometry update,
+    // resize, migration, and halo exchange.
+    shouldLoadBalance = _configuration.loadBalancer.value == LoadBalancerOption::invertedPressure and
+                        _configuration.deltaT.value != 0 and not _simulationIsPaused and
+                        _iteration % _configuration.loadBalancingInterval.value == 0;
+
+    if (_configuration.deltaT.value != 0 and not _simulationIsPaused) {
+      _timers.positionUpdate.start();
+      integrator.beginStep(*_autoPasDMContainer, _configuration.deltaT.value, particleOperations);
+      _timers.positionUpdate.stop();
+      particleOperations.checkForFastParticles();
+
+#if MD_FLEXIBLE_MODE == MULTISITE
+      updateQuaternions();
+#endif
+    }
+
+    forceEvaluator(*_autoPasDMContainer);
 
     if (_configuration.pauseSimulationDuringTuning.value) {
-      // If PauseSimulationDuringTuning is enabled we need to update the _simulationIsPaused flag
       updateSimulationPauseState();
     }
 
     if (_configuration.deltaT.value != 0 and not _simulationIsPaused) {
-      updateVelocities();
+      _timers.velocityUpdate.start();
+      integrator.finishStep(*_autoPasDMContainer, _configuration.deltaT.value, particleOperations);
+      _timers.velocityUpdate.stop();
+
 #if MD_FLEXIBLE_MODE == MULTISITE
       updateAngularVelocities();
 #endif
@@ -454,14 +479,6 @@ std::string Simulation::timerToString(const std::string &name, long timeNS, int 
   return ss.str();
 }
 
-void Simulation::updatePositionsAndResetForces() {
-  _timers.positionUpdate.start();
-  TimeDiscretization::calculatePositionsAndResetForces(
-      *_autoPasDMContainer, *(_configuration.getParticlePropertiesLibrary()), _configuration.deltaT.value,
-      _configuration.globalForce.value, _configuration.fastParticlesThrow.value);
-  _timers.positionUpdate.stop();
-}
-
 void Simulation::updateQuaternions() {
   _timers.quaternionUpdate.start();
   TimeDiscretization::calculateQuaternionsAndResetTorques(
@@ -504,17 +521,6 @@ void Simulation::updateInteractionForces() {
   }
 
   _timers.forceUpdateTotal.stop();
-}
-
-void Simulation::updateVelocities() {
-  const double deltaT = _configuration.deltaT.value;
-
-  if (deltaT != 0) {
-    _timers.velocityUpdate.start();
-    TimeDiscretization::calculateVelocities(*_autoPasDMContainer, *(_configuration.getParticlePropertiesLibrary()),
-                                            deltaT);
-    _timers.velocityUpdate.stop();
-  }
 }
 
 void Simulation::updateAngularVelocities() {

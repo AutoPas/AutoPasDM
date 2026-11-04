@@ -12,6 +12,7 @@ struct TestParticle {
   std::array<double, 3> position{0.0, 0.0, 0.0};
   std::array<double, 3> velocity{0.0, 0.0, 0.0};
   std::array<double, 3> force{0.0, 0.0, 0.0};
+  std::array<double, 3> oldForce{0.0, 0.0, 0.0};
 };
 
 struct TestParticleSystem {
@@ -43,6 +44,10 @@ struct TestParticleOperations {
   }
 
   auto getForce(const TestParticle &particle) const { return particle.force; }
+
+  auto getOldForce(const TestParticle &particle) const { return particle.oldForce; }
+
+  void setOldForce(TestParticle &particle, const std::array<double, 3> &force) const { particle.oldForce = force; }
 };
 
 struct ConstantForceEvaluator {
@@ -137,6 +142,44 @@ TEST(StormerVerletTest, RecomputesForceAtUpdatedPosition) {
   EXPECT_NEAR(particles.particles[0].position[0], 1.02, 1e-12);
   EXPECT_NEAR(particles.particles[0].force[0], 1.02, 1e-12);
   EXPECT_NEAR(particles.particles[0].velocity[0], 0.202, 1e-12);
+}
+
+TEST(StormerVerletTest, CanPauseBetweenPositionAndVelocityUpdates) {
+  TestParticle particle;
+  particle.mass = 2.0;
+  particle.position = {1.0, 0.0, 0.0};
+  particle.velocity = {3.0, 0.0, 0.0};
+  particle.force = {2.0, 0.0, 0.0};
+
+  TestParticleSystem particles{{particle}};
+  TestParticleOperations operations;
+  autopasdm::timeintegration::StormerVerlet integrator;
+  constexpr double dt = 0.1;
+
+  // Begin the step: update the position, preserve the old force,
+  // and reset the force for the next evaluation.
+  integrator.beginStep(particles, dt, operations);
+
+  EXPECT_NEAR(particles.particles[0].position[0], 1.305, 1e-12);
+  EXPECT_DOUBLE_EQ(particles.particles[0].velocity[0], 3.0);
+  EXPECT_DOUBLE_EQ(particles.particles[0].oldForce[0], 2.0);
+  EXPECT_DOUBLE_EQ(particles.particles[0].force[0], 0.0);
+
+  // Simulate force evaluations while the simulation is paused for tuning.
+  // The particle state must remain unchanged during the pause.
+  for (int tuningIteration = 0; tuningIteration < 2; ++tuningIteration) {
+    operations.resetForce(particles.particles[0]);
+    particles.particles[0].force = {4.0, 0.0, 0.0};
+
+    EXPECT_NEAR(particles.particles[0].position[0], 1.305, 1e-12);
+    EXPECT_DOUBLE_EQ(particles.particles[0].velocity[0], 3.0);
+  }
+
+  // Finish the pending step after tuning has completed.
+  integrator.finishStep(particles, dt, operations);
+
+  EXPECT_NEAR(particles.particles[0].position[0], 1.305, 1e-12);
+  EXPECT_NEAR(particles.particles[0].velocity[0], 3.15, 1e-12);
 }
 
 }  // namespace
