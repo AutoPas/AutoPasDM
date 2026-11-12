@@ -68,11 +68,13 @@ endforeach()
 
 # Small integration example: md-flexible's MoleculeLJ + md-flexible's ordinary
 # AutoPas LJFunctor running through AutoPasDM. No functor adapter.
-add_executable(autopasdm-lj-example examples/AutoPasDMLJExample.cpp)
-target_include_directories(autopasdm-lj-example PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(
-    autopasdm-lj-example
-    PRIVATE
-        autopasdm
-        molecularDynamicsLibrary
-)
+if(MD_FLEXIBLE_MODE STREQUAL "SINGLESITE")
+    add_executable(autopasdm-lj-example examples/AutoPasDMLJExample.cpp)
+    target_include_directories(autopasdm-lj-example PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(
+        autopasdm-lj-example
+        PRIVATE
+            autopasdm
+            molecularDynamicsLibrary
+    )
+endif()

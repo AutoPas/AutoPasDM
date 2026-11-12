@@ -48,14 +48,14 @@ if(AUTOPASDM_ENABLE_DETAILED_TIMERS)
     set(_autopasdm_enable_timers ON)
 endif()
 
-# The bundled md-flexible example currently supports the single-site particle
-# model only. This value has to be known while AutoPas' applicationLibrary is
-# configured.
 if(AUTOPASDM_BUILD_EXAMPLES)
     set(MD_FLEXIBLE_MODE "SINGLESITE" CACHE STRING "md-flexible particle mode")
-    if(NOT MD_FLEXIBLE_MODE STREQUAL "SINGLESITE")
+    set_property(CACHE MD_FLEXIBLE_MODE PROPERTY STRINGS SINGLESITE MULTISITE)
+
+    if(NOT MD_FLEXIBLE_MODE STREQUAL "SINGLESITE"
+        AND NOT MD_FLEXIBLE_MODE STREQUAL "MULTISITE")
         message(FATAL_ERROR
-            "The bundled AutoPasDM md-flexible example currently supports MD_FLEXIBLE_MODE=SINGLESITE only."
+            "MD_FLEXIBLE_MODE must be SINGLESITE or MULTISITE."
         )
     endif()
 endif()
