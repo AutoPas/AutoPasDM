@@ -4,12 +4,14 @@ add_executable(
     PerformanceCountersTest.cpp
     InvertedPressureTest.cpp
     ReflectiveBoundaryTest.cpp
+    MoleculeLJParticleSerializerTest.cpp
 )
 
 target_link_libraries(
     autopasdm_tests
     PRIVATE
         autopasdm
+        molecularDynamicsLibrary
         GTest::gtest_main
 )
 
@@ -42,6 +44,63 @@ function(add_autopasdm_mpi_gtest target test_name number_of_ranks)
     set_tests_properties("AutoPasDM/${test_name}" PROPERTIES PROCESSORS ${number_of_ranks})
 endfunction()
 
+add_executable(
+    autopasdm_multisite_migration_tests
+    MultisiteParticleMigrationTest.cpp
+    MPITestMain.cpp
+)
+
+target_link_libraries(
+    autopasdm_multisite_migration_tests
+    PRIVATE
+        autopasdm
+        molecularDynamicsLibrary
+        GTest::gtest
+        MPI::MPI_CXX
+)
+
+target_include_directories(
+    autopasdm_multisite_migration_tests
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../examples/md-flexible"
+)
+
+target_compile_features(autopasdm_multisite_migration_tests PRIVATE cxx_std_20)
+
+add_autopasdm_mpi_gtest(
+    autopasdm_multisite_migration_tests
+    MultisiteParticleMigrationTest.PreservesStateWhenParticleMigratesAcrossRankBoundary
+    2
+)
+
+add_executable(
+    autopasdm_multisite_interaction_tests
+    MultisiteInteractionTest.cpp
+    MPITestMain.cpp
+)
+
+target_link_libraries(
+    autopasdm_multisite_interaction_tests
+    PRIVATE
+        autopasdm
+        molecularDynamicsLibrary
+        GTest::gtest
+        MPI::MPI_CXX
+)
+
+target_include_directories(
+    autopasdm_multisite_interaction_tests
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../examples/md-flexible"
+)
+
+target_compile_features(autopasdm_multisite_interaction_tests PRIVATE cxx_std_20)
+
+add_autopasdm_mpi_gtest(
+    autopasdm_multisite_interaction_tests
+    MultisiteInteractionTest.ComputesSameForcesAndTorquesAcrossRankBoundary
+    2
+)
 
 add_executable(
     autopasdm_load_balancing_tests
@@ -273,8 +332,6 @@ add_autopasdm_mpi_gtest(
     HaloExchangeTest.ReflectiveBoundarySuppressesGlobalHaloButKeepsInternalHalo
     4
 )
-
-
 
 add_executable(
     autopasdm_runtime_tests
