@@ -1,10 +1,15 @@
 #pragma once
 
+#if defined(AUTOPASDM_ENABLE_ALL_LOAD_BALANCER)
+#include <ALL.hpp>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <concepts>
 #include <cstddef>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -358,6 +363,23 @@ class AutoPasDM {
   void prepareInteractions(double localWork) { synchronizeParticlesWithLoadBalancing(localWork); }
 
   /**
+   * Prepare the distributed particle state and update the local ownership bounds using ALL's tensor load balancer.
+   *
+   * ALL must be enabled at build time and every rank must call this method with its measured computational work.
+   * Once ALL proposes new bounds, AutoPasDM resizes the local AutoPas box, migrates particles, and rebuilds halos.
+   *
+   * @param localWork Computational work measured on this MPI rank.
+   */
+  void prepareInteractionsWithAllLoadBalancer(double localWork) {
+#if defined(AUTOPASDM_ENABLE_ALL_LOAD_BALANCER)
+    synchronizeParticlesWithAllLoadBalancer(localWork);
+#else
+    (void)localWork;
+    throw std::runtime_error("AutoPasDM: ALL load balancing is disabled at compile time.");
+#endif
+  }
+
+  /**
    * Prepare the distributed particle state while applying updated local ownership bounds.
    *
    * This overload is the integration point for adaptive regular-grid load balancing. The
@@ -557,6 +579,57 @@ class AutoPasDM {
   }
 
   /**
+   * Synchronize particles and update the local domain through ALL's tensor load balancing.
+   *
+   * @param localWork Computational work measured on this rank.
+   */
+  void synchronizeParticlesWithAllLoadBalancer(double localWork) {
+#if defined(AUTOPASDM_ENABLE_ALL_LOAD_BALANCER)
+    AUTOPASDM_SCOPED_TIMER(_performanceCounters.synchronization);
+    AUTOPASDM_TIMER_START(_performanceCounters.updateContainer);
+    auto emigrants = _autoPas.updateContainer();
+    AUTOPASDM_TIMER_STOP(_performanceCounters.updateContainer);
+
+    if (_runtime.size() == 1) {
+      migrateAndExchangeHalos(std::move(emigrants));
+      return;
+    }
+
+    AUTOPASDM_TIMER_START(_performanceCounters.loadBalancing);
+    if (not _allLoadBalancer) {
+      _allLoadBalancer = std::make_unique<ALL::ALL<double, double>>(ALL::TENSOR, 3, 0);
+      _allLoadBalancer->setCommunicator(_runtime.communicator());
+      const double minDomainSize = 2. * (_cutoff + _autoPas.getVerletSkin());
+      _allLoadBalancer->setMinDomainSize({minDomainSize, minDomainSize, minDomainSize});
+      _allLoadBalancer->setup();
+    }
+
+    std::vector<ALL::Point<double>> vertices(2, ALL::Point<double>(3));
+    for (std::size_t dimension = 0; dimension < 3; ++dimension) {
+      vertices[0][dimension] = _domain.localMin()[dimension];
+      vertices[1][dimension] = _domain.localMax()[dimension];
+    }
+    _allLoadBalancer->setVertices(vertices);
+    _allLoadBalancer->setWork(localWork);
+    _allLoadBalancer->balance();
+
+    const auto updatedVertices = _allLoadBalancer->getVertices();
+    std::array<double, 3> localMin{};
+    std::array<double, 3> localMax{};
+    for (std::size_t dimension = 0; dimension < 3; ++dimension) {
+      localMin[dimension] = updatedVertices[0][dimension];
+      localMax[dimension] = updatedVertices[1][dimension];
+    }
+    AUTOPASDM_TIMER_STOP(_performanceCounters.loadBalancing);
+
+    resizeDomainAndMigrate(std::move(emigrants), localMin, localMax, _domain.processGrid());
+#else
+    (void)localWork;
+    throw std::runtime_error("AutoPasDM: ALL load balancing is disabled at compile time.");
+#endif
+  }
+
+  /**
    * Resize the complete adaptive decomposition and migrate all particles invalidated by the geometry change.
    *
    * @param emigrants Particles already removed by AutoPas::updateContainer() for the previous ownership box.
@@ -564,7 +637,8 @@ class AutoPasDM {
    * @param localMax Proposed upper corner of this rank's new ownership box.
    */
   void resizeDomainAndMigrate(std::vector<Particle> emigrants, const std::array<double, 3> &localMin,
-                              const std::array<double, 3> &localMax) {
+                              const std::array<double, 3> &localMax,
+                              std::array<int, 3> maximumMigrationHops = {1, 1, 1}) {
     // Synchronize the complete Cartesian split positions before changing AutoPas.
     // targetRank() needs all process-plane boundaries once the grid is no longer uniform.
     auto resizedDomain = _domain;
@@ -580,7 +654,7 @@ class AutoPasDM {
                      std::make_move_iterator(additionalEmigrants.end()));
 
     _domain = std::move(resizedDomain);
-    migrateAndExchangeHalos(std::move(emigrants));
+    migrateAndExchangeHalos(std::move(emigrants), maximumMigrationHops);
   }
 
   /**
@@ -638,9 +712,9 @@ class AutoPasDM {
    *
    * @param emigrants Particles that no longer belong to the local ownership box.
    */
-  void migrateAndExchangeHalos(std::vector<Particle> emigrants) {
+  void migrateAndExchangeHalos(std::vector<Particle> emigrants, std::array<int, 3> maximumMigrationHops = {1, 1, 1}) {
     AUTOPASDM_TIMER_START(_performanceCounters.migration);
-    auto immigrants = _particleMigration.migrate(emigrants, _domain);
+    auto immigrants = _particleMigration.migrate(emigrants, _domain, maximumMigrationHops);
     AUTOPASDM_TIMER_STOP(_performanceCounters.migration);
 
     AUTOPASDM_TIMER_START(_performanceCounters.addMigratedParticles);
@@ -671,6 +745,9 @@ class AutoPasDM {
   ParticleMigration<Particle, Serializer> _particleMigration;
   HaloExchange<Particle, Serializer> _haloExchange;
   std::optional<load_balancing::InvertedPressureLoadBalancer> _invertedPressureLoadBalancer;
+#if defined(AUTOPASDM_ENABLE_ALL_LOAD_BALANCER)
+  std::unique_ptr<ALL::ALL<double, double>> _allLoadBalancer;
+#endif
   autopas::AutoPas<Particle> _autoPas;
   double _cutoff;
 };

@@ -273,14 +273,20 @@ void Simulation::run() {
     // computational work before distributed synchronization and only requests a balancing
     // step at the configured interval. AutoPasDM owns the actual geometry update,
     // resize, migration, and halo exchange.
-    const bool shouldLoadBalance = _configuration.loadBalancer.value == LoadBalancerOption::invertedPressure and
-                                   _configuration.deltaT.value != 0 and not _simulationIsPaused and
+    const bool usesAdaptiveLoadBalancer = _configuration.loadBalancer.value == LoadBalancerOption::invertedPressure or
+                                          _configuration.loadBalancer.value == LoadBalancerOption::all;
+    const bool shouldLoadBalance = usesAdaptiveLoadBalancer and _configuration.deltaT.value != 0 and
+                                   not _simulationIsPaused and
                                    _iteration % _configuration.loadBalancingInterval.value == 0;
 
     _timers.distributedSynchronization.start();
     if (shouldLoadBalance) {
       const auto computationalLoad = static_cast<double>(_timers.computationalLoad.stop());
-      _autoPasDMContainer->prepareInteractions(computationalLoad);
+      if (_configuration.loadBalancer.value == LoadBalancerOption::all) {
+        _autoPasDMContainer->prepareInteractionsWithAllLoadBalancer(computationalLoad);
+      } else {
+        _autoPasDMContainer->prepareInteractions(computationalLoad);
+      }
     } else {
       _autoPasDMContainer->prepareInteractions();
     }

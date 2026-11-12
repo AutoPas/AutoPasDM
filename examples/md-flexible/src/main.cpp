@@ -24,12 +24,8 @@ int main(int argc, char **argv) {
   {
     MDFlexConfig configuration(argc, argv, runtime.isRoot());
 
-    // AutoPasDM currently supports md-flexible's InvertedPressure load balancer.
-    // ALL requires a different migration strategy and is intentionally not supported yet.
-    if (configuration.loadBalancer.value == LoadBalancerOption::all) {
-      throw std::runtime_error("AutoPasDM does not support the ALL load balancer yet. Use InvertedPressure or None.");
-    }
-    if (configuration.loadBalancer.value == LoadBalancerOption::invertedPressure and
+    if ((configuration.loadBalancer.value == LoadBalancerOption::invertedPressure or
+         configuration.loadBalancer.value == LoadBalancerOption::all) and
         configuration.loadBalancingInterval.value == 0) {
       throw std::runtime_error("Load balancing interval must be greater than zero.");
     }

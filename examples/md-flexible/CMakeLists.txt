@@ -23,6 +23,12 @@ file(
 add_executable(md-flexible ${MDFlex_SRC})
 target_include_directories(md-flexible PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# md-flexible exposes the optional ALL dependency through its configuration, while the
+# corresponding implementation is part of the application-independent AutoPasDM library.
+if(MD_FLEXIBLE_ENABLE_ALLLBL)
+    target_compile_definitions(md-flexible PRIVATE AUTOPASDM_ENABLE_ALL_LOAD_BALANCER)
+endif()
+
 target_link_libraries(
     md-flexible
     PUBLIC

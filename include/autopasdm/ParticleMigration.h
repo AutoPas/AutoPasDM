@@ -2,6 +2,7 @@
 
 #include <mpi.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <stdexcept>
@@ -60,11 +61,15 @@ class ParticleMigration {
   /**
    * Migrate emigrants to their owning rank using staged direct-neighbor communication.
    *
+   * The default permits a single neighbor hop in each dimension, matching ordinary particle movement. Callers that
+   * have changed the domain decomposition may permit additional hops so particles can reach their new owners.
+   *
    * @param emigrants Particles that left the previous local AutoPas ownership box.
    * @param domain Current Cartesian domain decomposition used to route the particles.
+   * @param maximumHops Maximum number of neighbor transfers allowed in each dimension.
    */
-  [[nodiscard]] std::vector<Particle> migrate(const std::vector<Particle> &emigrants,
-                                              const DomainDecomposition &domain) const {
+  [[nodiscard]] std::vector<Particle> migrate(const std::vector<Particle> &emigrants, const DomainDecomposition &domain,
+                                              std::array<int, 3> maximumHops = {1, 1, 1}) const {
     // In the common case that no rank has emigrants, avoid the staged neighbor
     // count exchanges entirely. One small collective is cheaper than entering
     // every x/y/z migration stage with empty send buffers.
@@ -77,9 +82,9 @@ class ParticleMigration {
 
     for (std::size_t dimension = 0; dimension < 3; ++dimension) {
       const auto boundaryType = domain.boundaryType(static_cast<int>(dimension));
-      AUTOPASDM_DETAILED_TIMER_START(_performanceCounters, migrationClassification);
 
       if (domain.processGrid()[dimension] == 1) {
+        AUTOPASDM_DETAILED_TIMER_START(_performanceCounters, migrationClassification);
         std::vector<Particle> particlesInsideBoundary;
         particlesInsideBoundary.reserve(remainingParticles.size());
 
@@ -105,77 +110,84 @@ class ParticleMigration {
         continue;
       }
 
-      std::vector<Particle> sendPreceding;
-      std::vector<Particle> sendSucceeding;
-      std::vector<Particle> stayForNextDimension;
-
-      sendPreceding.reserve(remainingParticles.size() / 3);
-      sendSucceeding.reserve(remainingParticles.size() / 3);
-      stayForNextDimension.reserve(remainingParticles.size());
-
-      for (auto particle : remainingParticles) {
-        auto position = particle.getR();
-
-        if (position[dimension] < domain.localMin()[dimension]) {
-          const bool crossesGlobalBoundary = domain.coordinates()[dimension] == 0;
-
-          if (crossesGlobalBoundary) {
-            if (boundaryType == BoundaryType::periodic) {
-              domain.applyPeriodicBoundary(position, static_cast<int>(dimension));
-              particle.setR(position);
-            } else if (boundaryType == BoundaryType::reflective) {
-              crossedReflectiveBoundary = true;
-              continue;
-            } else {
-              // BoundaryType::none deliberately drops particles outside the global box.
-              continue;
-            }
-          }
-
-          sendPreceding.push_back(std::move(particle));
-        } else if (position[dimension] >= domain.localMax()[dimension]) {
-          const bool crossesGlobalBoundary = domain.coordinates()[dimension] == domain.processGrid()[dimension] - 1;
-
-          if (crossesGlobalBoundary) {
-            if (boundaryType == BoundaryType::periodic) {
-              domain.applyPeriodicBoundary(position, static_cast<int>(dimension));
-              particle.setR(position);
-            } else if (boundaryType == BoundaryType::reflective) {
-              crossedReflectiveBoundary = true;
-              continue;
-            } else {
-              // BoundaryType::none deliberately drops particles outside the global box.
-              continue;
-            }
-          }
-
-          sendSucceeding.push_back(std::move(particle));
-        } else {
-          stayForNextDimension.push_back(std::move(particle));
-        }
+      if (maximumHops[dimension] < 1) {
+        throw std::invalid_argument("ParticleMigration: maximum hops must be positive in every dimension.");
       }
+      const int numberOfHops = std::min(maximumHops[dimension], domain.processGrid()[dimension]);
+      for (int hop = 0; hop < numberOfHops; ++hop) {
+        AUTOPASDM_DETAILED_TIMER_START(_performanceCounters, migrationClassification);
+        std::vector<Particle> sendPreceding;
+        std::vector<Particle> sendSucceeding;
+        std::vector<Particle> stayForNextDimension;
 
-      AUTOPASDM_DETAILED_TIMER_STOP(_performanceCounters, migrationClassification);
-      AUTOPASDM_DETAILED_ADD(_performanceCounters, migrationParticlesSent,
-                             sendPreceding.size() + sendSucceeding.size());
+        sendPreceding.reserve(remainingParticles.size() / 3);
+        sendSucceeding.reserve(remainingParticles.size() / 3);
+        stayForNextDimension.reserve(remainingParticles.size());
 
-      auto exchangeRequest = beginLeftRightExchange<Particle, Serializer>(
-          _comm, domain.precedingNeighbor(static_cast<int>(dimension)),
-          domain.succeedingNeighbor(static_cast<int>(dimension)), sendPreceding, sendSucceeding,
-          100 + static_cast<int>(dimension) * 10 AUTOPASDM_DETAILED_COUNTERS_ARGUMENT(_performanceCounters));
-      const auto exchange =
-          finishLeftRightExchange(exchangeRequest AUTOPASDM_DETAILED_COUNTERS_ARGUMENT(_performanceCounters));
-      AUTOPASDM_DETAILED_ADD(_performanceCounters, migrationParticlesReceived,
-                             exchange.recvFromLeft.size() + exchange.recvFromRight.size());
+        for (auto particle : remainingParticles) {
+          auto position = particle.getR();
 
-      stayForNextDimension.reserve(stayForNextDimension.size() + exchange.recvFromLeft.size() +
-                                   exchange.recvFromRight.size());
-      stayForNextDimension.insert(stayForNextDimension.end(), exchange.recvFromLeft.begin(),
-                                  exchange.recvFromLeft.end());
-      stayForNextDimension.insert(stayForNextDimension.end(), exchange.recvFromRight.begin(),
-                                  exchange.recvFromRight.end());
+          if (position[dimension] < domain.localMin()[dimension]) {
+            const bool crossesGlobalBoundary = domain.coordinates()[dimension] == 0;
 
-      remainingParticles = std::move(stayForNextDimension);
+            if (crossesGlobalBoundary) {
+              if (boundaryType == BoundaryType::periodic) {
+                domain.applyPeriodicBoundary(position, static_cast<int>(dimension));
+                particle.setR(position);
+              } else if (boundaryType == BoundaryType::reflective) {
+                crossedReflectiveBoundary = true;
+                continue;
+              } else {
+                // BoundaryType::none deliberately drops particles outside the global box.
+                continue;
+              }
+            }
+
+            sendPreceding.push_back(std::move(particle));
+          } else if (position[dimension] >= domain.localMax()[dimension]) {
+            const bool crossesGlobalBoundary = domain.coordinates()[dimension] == domain.processGrid()[dimension] - 1;
+
+            if (crossesGlobalBoundary) {
+              if (boundaryType == BoundaryType::periodic) {
+                domain.applyPeriodicBoundary(position, static_cast<int>(dimension));
+                particle.setR(position);
+              } else if (boundaryType == BoundaryType::reflective) {
+                crossedReflectiveBoundary = true;
+                continue;
+              } else {
+                // BoundaryType::none deliberately drops particles outside the global box.
+                continue;
+              }
+            }
+
+            sendSucceeding.push_back(std::move(particle));
+          } else {
+            stayForNextDimension.push_back(std::move(particle));
+          }
+        }
+
+        AUTOPASDM_DETAILED_TIMER_STOP(_performanceCounters, migrationClassification);
+        AUTOPASDM_DETAILED_ADD(_performanceCounters, migrationParticlesSent,
+                               sendPreceding.size() + sendSucceeding.size());
+
+        auto exchangeRequest = beginLeftRightExchange<Particle, Serializer>(
+            _comm, domain.precedingNeighbor(static_cast<int>(dimension)),
+            domain.succeedingNeighbor(static_cast<int>(dimension)), sendPreceding, sendSucceeding,
+            100 + static_cast<int>(dimension) * 10 AUTOPASDM_DETAILED_COUNTERS_ARGUMENT(_performanceCounters));
+        const auto exchange =
+            finishLeftRightExchange(exchangeRequest AUTOPASDM_DETAILED_COUNTERS_ARGUMENT(_performanceCounters));
+        AUTOPASDM_DETAILED_ADD(_performanceCounters, migrationParticlesReceived,
+                               exchange.recvFromLeft.size() + exchange.recvFromRight.size());
+
+        stayForNextDimension.reserve(stayForNextDimension.size() + exchange.recvFromLeft.size() +
+                                     exchange.recvFromRight.size());
+        stayForNextDimension.insert(stayForNextDimension.end(), exchange.recvFromLeft.begin(),
+                                    exchange.recvFromLeft.end());
+        stayForNextDimension.insert(stayForNextDimension.end(), exchange.recvFromRight.begin(),
+                                    exchange.recvFromRight.end());
+
+        remainingParticles = std::move(stayForNextDimension);
+      }
     }
 
     // Error checks happen only after all staged neighbor exchanges have completed.
