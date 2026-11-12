@@ -4,6 +4,7 @@ add_executable(
     PerformanceCountersTest.cpp
     InvertedPressureTest.cpp
     ReflectiveBoundaryTest.cpp
+    MultisiteReflectiveBoundaryTest.cpp
     MoleculeLJParticleSerializerTest.cpp
 )
 
