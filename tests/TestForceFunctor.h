@@ -74,7 +74,7 @@ class TestForceFunctor : public autopas::PairwiseFunctor<Particle, TestForceFunc
   }
 
   [[nodiscard]] bool allowsNewton3() override { return true; }
-  [[nodiscard]] bool allowsNonNewton3() override { return false; }
+  [[nodiscard]] bool allowsNonNewton3() override { return true; }
   [[nodiscard]] bool isRelevantForTuning() override { return true; }
   [[nodiscard]] std::string getName() override { return "TestForceFunctor"; }
 

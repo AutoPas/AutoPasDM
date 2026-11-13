@@ -598,6 +598,10 @@ class AutoPasDM {
     AUTOPASDM_TIMER_START(_performanceCounters.loadBalancing);
     if (not _allLoadBalancer) {
       _allLoadBalancer = std::make_unique<ALL::ALL<double, double>>(ALL::TENSOR, 3, 0);
+      const auto &coordinates = _domain.coordinates();
+      const auto &processGrid = _domain.processGrid();
+      _allLoadBalancer->setProcGridParams({coordinates[0], coordinates[1], coordinates[2]},
+                                          {processGrid[0], processGrid[1], processGrid[2]});
       _allLoadBalancer->setCommunicator(_runtime.communicator());
       const double minDomainSize = 2. * (_cutoff + _autoPas.getVerletSkin());
       _allLoadBalancer->setMinDomainSize({minDomainSize, minDomainSize, minDomainSize});
