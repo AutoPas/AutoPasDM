@@ -153,6 +153,13 @@ if(AUTOPASDM_BUILD_TESTS)
         FetchContent_MakeAvailable(googletest)
     endif()
 
+    if(TARGET gmock AND NOT TARGET GTest::gmock)
+        add_library(GTest::gmock ALIAS gmock)
+    endif()
+    if(NOT TARGET GTest::gmock)
+        message(FATAL_ERROR "md-flexible tests require GoogleTest's GMock target.")
+    endif()
+
     add_subdirectory(tests)
 endif()
 

@@ -84,3 +84,76 @@ if(MD_FLEXIBLE_MODE STREQUAL "SINGLESITE")
             molecularDynamicsLibrary
     )
 endif()
+
+if(AUTOPASDM_BUILD_TESTS)
+    add_subdirectory(tests)
+
+    set(MDFLEX_TEST_FUNCTOR "Lennard-Jones")
+    if(MD_FLEXIBLE_FUNCTOR_AVX AND MD_FLEXIBLE_MODE STREQUAL "SINGLESITE")
+        set(MDFLEX_TEST_FUNCTOR "Lennard-Jones-AVX")
+    endif()
+
+    # Small single-rank runs exercise the same command-line paths as upstream md-flexible.
+    add_test(
+        NAME md-flexible.test-static
+        COMMAND md-flexible
+            --container linked
+            --cutoff 1.
+            --distribution-mean 5.0
+            --distribution-stddeviation 2.0
+            --data-layout soa
+            --functor "Lennard-Jones"
+            --iterations 10
+            --particle-generator gauss
+            --particles-total 10
+            --traversal c08,sliced
+            --verlet-rebuild-frequency 5
+            --verlet-skin-radius 0
+            --boundary-type none
+            --deltaT 0.
+            --no-end-config
+            --no-progress-bar
+        CONFIGURATIONS checkExamples
+    )
+    set_tests_properties(md-flexible.test-static PROPERTIES LABELS "md-flexible;integration")
+
+    add_test(
+        NAME md-flexible.test-sim
+        COMMAND md-flexible
+            --container all
+            --traversal all
+            --cutoff 1.5
+            --functor "${MDFLEX_TEST_FUNCTOR}"
+            --vectorization-pattern 1xVectorLength
+            --tuning-phases 1
+            --particle-generator grid
+            --particles-per-dimension 10
+            --particle-spacing 1.1225
+            --verlet-rebuild-frequency 4
+            --verlet-skin-radius 0.2
+            --boundary-type periodic
+            --deltaT 0.005
+            --no-end-config
+            --no-progress-bar
+        CONFIGURATIONS checkExamples
+    )
+    set_tests_properties(md-flexible.test-sim PROPERTIES LABELS "md-flexible;integration")
+
+    if(MD_FLEXIBLE_FUNCTOR_AVX AND MD_FLEXIBLE_MODE STREQUAL "SINGLESITE")
+        add_test(
+            NAME md-flexible-avx.test-unaligned
+            COMMAND md-flexible
+                --no-end-config
+                --functor "Lennard-Jones-AVX"
+                --vectorization-pattern 1xVectorLength
+                --deltaT 0
+                --particle-generator uniform
+                --log-level debug
+                --traversal lc_c04_combined_SoA
+                --particles-total 71
+                --no-progress-bar
+                CONFIGURATIONS checkExamples
+        )
+        set_tests_properties(md-flexible-avx.test-unaligned PROPERTIES LABELS "md-flexible;integration")
+    endif()
+endif()
