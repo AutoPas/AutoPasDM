@@ -10,8 +10,8 @@ from a regular decomposition and can adapt the subdomain boundaries at runtime w
 inverted-pressure load balancing while keeping the process-grid topology fixed.
 Boundary conditions are selected per dimension. `periodic`, `reflective`, and `none`
 are represented in the distributed topology. Reflective boundaries are non-periodic
-for migration and halo exchange; the bundled single-site md-flexible example keeps
-the physical Lennard-Jones mirror-wall force as application-level physics.
+for migration and halo exchange; the bundled md-flexible example applies reflective
+mirror-wall forces at application level for both single-site and multi-site particles.
 
 The simulator-facing API deliberately exposes operations on the distributed particle
 system instead of the node-level AutoPas container. Existing AutoPas particle types
@@ -92,17 +92,20 @@ the AutoPasDM md-flexible integration starts correctly with multiple ranks.
 - Staged x -> y -> z particle migration through direct face neighbors.
 - Staged x -> y -> z halo exchange with propagation to edge and corner neighbors.
 - Split-phase non-blocking MPI payload transport for timestep migration and halo exchange.
-- Adaptive regular-grid decomposition with inverted-pressure load balancing.
+- Adaptive regular-grid decomposition with inverted-pressure load balancing, plus an
+  optional ALL/TENSOR load-balancing path when compiled with ALL support.
 - Adaptive ownership lookup using the complete process-plane split positions.
 - A compact operation-based public API for particle updates, reductions, diagnostics,
   distributed synchronization, and AutoPas interaction functors.
-- Integration with the bundled single-site md-flexible example, including the
-  `None` and `InvertedPressure` load-balancer settings and `load-balancing-interval`.
+- Integration with the bundled md-flexible example in single-site and multi-site modes,
+  including `None`, `InvertedPressure`, and optional `ALL` load-balancer settings and
+  `load-balancing-interval`.
 
-The current implementation deliberately keeps several research directions open.
-Communication/computation overlap is not used yet, MPI is the only communication
-backend, and md-flexible's optional ALL/TENSOR load balancer is not supported.
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details and design constraints.
+The ALL/TENSOR path is optional and requires building with
+`-DMD_FLEXIBLE_ENABLE_ALLLBL=ON` and an available ALL dependency. It is implemented,
+but the current test suite has no end-to-end regression for ALL balancing.
+Communication/computation overlap is not used yet, and MPI is the only communication
+backend. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details and design constraints.
 
 ## Tests
 

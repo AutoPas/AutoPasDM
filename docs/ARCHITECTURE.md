@@ -228,12 +228,15 @@ rebuild halos
 This order handles both particles that left the old AutoPas box through motion and
 particles that become emigrants only because the ownership boundary moved.
 
-The bundled md-flexible integration requests a balancing step only when
-`load-balancer` is `InvertedPressure`, the simulation is active, and the configured
+The bundled md-flexible integration requests a balancing step when `load-balancer` is
+`InvertedPressure` or `ALL`, the simulation is active, and the configured
 `load-balancing-interval` is reached. The computational work is measured on the
 application side before distributed synchronization. `None` uses the static path.
-md-flexible's optional ALL/TENSOR load balancer is intentionally rejected because it
-requires different migration semantics and is not implemented in AutoPasDM.
+`InvertedPressure` uses AutoPasDM's built-in load balancer. When compiled with
+`MD_FLEXIBLE_ENABLE_ALLLBL=ON` and the ALL dependency available, the `ALL` option uses
+ALL's TENSOR method; AutoPasDM then resizes the local domain and migrates particles to
+the updated ownership regions. The current test suite checks parsing of the ALL option
+but does not include an end-to-end test of ALL balancing.
 
 ## Boundary physics
 
@@ -242,10 +245,11 @@ Distributed topology and boundary physics are deliberately separated.
 has no neighbor. A reflective boundary is therefore non-periodic from the distributed
 layer's perspective.
 
-The bundled single-site md-flexible example applies its original Lennard-Jones
-mirror-wall model through a separate `ReflectiveBoundary` component after distributed
-preparation and before the ordinary AutoPas interaction functor. Only thin
-wall-adjacent regions are traversed through `applyToOwnedParticlesInRegion()`.
+The bundled md-flexible example applies its mirror-wall model through a separate
+`ReflectiveBoundary` component after distributed preparation and before the ordinary
+AutoPas interaction functor. This application-level boundary physics is implemented for
+single-site and multi-site particles. Only thin wall-adjacent regions are traversed
+through `applyToOwnedParticlesInRegion()`.
 
 This keeps application-specific physical forces out of migration and halo code while
 still allowing AutoPasDM to provide the spatial operation needed to apply
@@ -285,9 +289,12 @@ not query MPI or the current rank. Those particles are inserted with
 `addParticlesFromRoot()`. Distributed checkpoint pieces use
 `addDistributedParticles()`, where every rank contributes its local input collection.
 
-The current bundled integration supports md-flexible's `None` and `InvertedPressure`
-load-balancer configurations. The optional ALL/TENSOR load balancer is not supported.
-The integration is restricted to `MD_FLEXIBLE_MODE=SINGLESITE`.
+The bundled integration supports md-flexible's `None` and `InvertedPressure`
+load-balancer configurations, and supports `ALL`/TENSOR when compiled with
+`MD_FLEXIBLE_ENABLE_ALLLBL=ON` and the ALL dependency available. Both
+`MD_FLEXIBLE_MODE=SINGLESITE` and `MD_FLEXIBLE_MODE=MULTISITE` are supported. The
+multisite mode currently requires the AutoVec LJ functor; AVX, Highway, SVE, and ATM
+functors are not implemented for multi-site particles.
 
 ## Compiled and templated components
 
@@ -313,10 +320,10 @@ separate from the current implementation.
   and timestep.
 - Halo exchange currently uses the cutoff as halo width.
 - Adaptive load balancing keeps the Cartesian process topology fixed.
-- Inverted Pressure is the only distributed load-balancing strategy implemented in
-  AutoPasDM; md-flexible's ALL/TENSOR option is not supported.
-- The bundled md-flexible integration currently supports the single-site particle
-  model only.
+- Inverted Pressure is built in. ALL/TENSOR balancing is an optional compile-time
+  feature (`MD_FLEXIBLE_ENABLE_ALLLBL=ON`) and currently lacks end-to-end test coverage.
+- The bundled md-flexible integration supports both single-site and multi-site particle
+  models; some SIMD and three-body functors remain single-site-only.
 - Distributed algorithm / communication-backend selection is not yet part of the
   runtime tuning loop.
 - GPU-resident particle transport and GPU-oriented communication backends are future
