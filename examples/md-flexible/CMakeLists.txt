@@ -26,7 +26,12 @@ target_include_directories(md-flexible PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 # md-flexible exposes the optional ALL dependency through its configuration, while the
 # corresponding implementation is part of the application-independent AutoPasDM library.
 if(MD_FLEXIBLE_ENABLE_ALLLBL)
-    target_compile_definitions(md-flexible PRIVATE AUTOPASDM_ENABLE_ALL_LOAD_BALANCER)
+    target_compile_definitions(
+        md-flexible
+        PRIVATE
+            AUTOPASDM_ENABLE_ALL_LOAD_BALANCER
+            MD_FLEXIBLE_ENABLE_ALLLBL
+    )
 endif()
 
 target_link_libraries(
@@ -138,6 +143,28 @@ if(AUTOPASDM_BUILD_TESTS)
         CONFIGURATIONS checkExamples
     )
     set_tests_properties(md-flexible.test-sim PROPERTIES LABELS "md-flexible;integration")
+
+    # Exercise the complete YAML -> Simulation -> AutoPasDM ALL/TENSOR path on two ranks.
+    if(MD_FLEXIBLE_ENABLE_ALLLBL AND MD_FLEXIBLE_USE_MPI)
+        add_test(
+            NAME md-flexible.test-all-load-balancer
+            COMMAND
+                ${MPIEXEC_EXECUTABLE}
+                ${MPIEXEC_NUMPROC_FLAG} 2
+                ${MPIEXEC_PREFLAGS}
+                $<TARGET_FILE:md-flexible>
+                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/input/autopasdm_all_load_balancer.yaml"
+                ${MPIEXEC_POSTFLAGS}
+            CONFIGURATIONS checkExamples
+        )
+        set_tests_properties(
+            md-flexible.test-all-load-balancer
+            PROPERTIES
+                PROCESSORS 2
+                LABELS "md-flexible;integration;load-balancing"
+                PASS_REGULAR_EXPRESSION "Owned: 126"
+        )
+    endif()
 
     if(MD_FLEXIBLE_FUNCTOR_AVX AND MD_FLEXIBLE_MODE STREQUAL "SINGLESITE")
         add_test(

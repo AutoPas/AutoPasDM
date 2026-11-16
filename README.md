@@ -103,7 +103,8 @@ the AutoPasDM md-flexible integration starts correctly with multiple ranks.
 
 The ALL/TENSOR path is optional and requires building with
 `-DMD_FLEXIBLE_ENABLE_ALLLBL=ON` and an available ALL dependency. It is implemented,
-but the current test suite has no end-to-end regression for ALL balancing.
+and when enabled is covered by a two-rank AutoPasDM balancing test and a short
+two-rank md-flexible application test.
 Communication/computation overlap is not used yet, and MPI is the only communication
 backend. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details and design constraints.
 

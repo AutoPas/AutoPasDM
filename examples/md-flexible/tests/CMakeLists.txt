@@ -56,7 +56,7 @@ target_link_libraries(
 )
 
 if(MD_FLEXIBLE_ENABLE_ALLLBL)
-    target_compile_definitions(mdFlexTests PRIVATE AUTOPASDM_ENABLE_ALL_LOAD_BALANCER)
+    target_compile_definitions(mdFlexTests PRIVATE AUTOPASDM_ENABLE_ALL_LOAD_BALANCER MD_FLEXIBLE_ENABLE_ALLLBL)
 endif ()
 
 if(MD_FLEXIBLE_ENABLE_ALLLBL)

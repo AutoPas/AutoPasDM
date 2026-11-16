@@ -235,8 +235,8 @@ application side before distributed synchronization. `None` uses the static path
 `InvertedPressure` uses AutoPasDM's built-in load balancer. When compiled with
 `MD_FLEXIBLE_ENABLE_ALLLBL=ON` and the ALL dependency available, the `ALL` option uses
 ALL's TENSOR method; AutoPasDM then resizes the local domain and migrates particles to
-the updated ownership regions. The current test suite checks parsing of the ALL option
-but does not include an end-to-end test of ALL balancing.
+the updated ownership regions. The test suite covers this path both through AutoPasDM
+and through a short two-rank md-flexible simulation when ALL support is enabled.
 
 ## Boundary physics
 
@@ -321,7 +321,8 @@ separate from the current implementation.
 - Halo exchange currently uses the cutoff as halo width.
 - Adaptive load balancing keeps the Cartesian process topology fixed.
 - Inverted Pressure is built in. ALL/TENSOR balancing is an optional compile-time
-  feature (`MD_FLEXIBLE_ENABLE_ALLLBL=ON`) and currently lacks end-to-end test coverage.
+  feature (`MD_FLEXIBLE_ENABLE_ALLLBL=ON`) with two-rank AutoPasDM and md-flexible
+  integration tests when enabled.
 - The bundled md-flexible integration supports both single-site and multi-site particle
   models; some SIMD and three-body functors remain single-site-only.
 - Distributed algorithm / communication-backend selection is not yet part of the
