@@ -447,3 +447,47 @@ add_autopasdm_mpi_gtest(
     AutoPasDMTest.ComputesForcesAfterExplicitPreparation
     4
 )
+add_executable(
+    autopasdm_md_time_discretization_tests
+    MDTimeDiscretizationTest.cpp
+    "${CMAKE_CURRENT_SOURCE_DIR}/../examples/md-flexible/src/TimeDiscretization.cpp"
+    MPITestMain.cpp
+)
+
+target_link_libraries(
+    autopasdm_md_time_discretization_tests
+    PRIVATE
+        autopasdm
+        molecularDynamicsLibrary
+        GTest::gtest
+        MPI::MPI_CXX
+)
+
+target_include_directories(
+    autopasdm_md_time_discretization_tests
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../examples/md-flexible"
+)
+
+target_compile_features(autopasdm_md_time_discretization_tests PRIVATE cxx_std_20)
+
+add_autopasdm_mpi_gtest(
+    autopasdm_md_time_discretization_tests
+    MDTimeDiscretizationTest.AppliesMassScaledGravityAndGlobalForceToDistributedParticles
+    2
+)
+add_autopasdm_mpi_gtest(
+    autopasdm_md_time_discretization_tests
+    MDTimeDiscretizationTest.CalculatesGravityTorqueOnDistributedMultisiteMolecules
+    2
+)
+add_autopasdm_mpi_gtest(
+    autopasdm_md_time_discretization_tests
+    MDTimeDiscretizationTest.CalculatesVelocitiesForDistributedParticles
+    2
+)
+add_autopasdm_mpi_gtest(
+    autopasdm_md_time_discretization_tests
+    MDTimeDiscretizationTest.CalculatesAngularVelocitiesForDistributedMultisiteMolecules
+    2
+)
