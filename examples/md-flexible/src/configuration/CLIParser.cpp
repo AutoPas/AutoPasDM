@@ -57,6 +57,7 @@ MDFlexParser::exitCodes MDFlexParser::CLIParser::parseInput(int argc, char **arg
       config.deltaT,
       config.aosSortingThreshold,
       config.soaSortingThreshold,
+      config.useSortingThresholdBenchmark,
       config.distributionMean,
       config.distributionStdDev,
       config.dontCreateEndConfig,
@@ -69,6 +70,7 @@ MDFlexParser::exitCodes MDFlexParser::CLIParser::parseInput(int argc, char **arg
       config.functorOption3B,
       config.generatorOption,
       config.globalForce,
+      config.gravity,
       config.iterations,
       config.loadBalancer,
       config.loadBalancingInterval,
@@ -82,6 +84,9 @@ MDFlexParser::exitCodes MDFlexParser::CLIParser::parseInput(int argc, char **arg
       config.newton3Options3B,
       config.outputSuffix,
       config.particleSpacing,
+      config.particleDensity,
+      config.closestPackingStructure,
+      config.gridAlignmentCentered,
       config.particlesPerDim,
       config.particlesTotal,
       config.relativeBlacklistRange,
@@ -230,6 +235,15 @@ MDFlexParser::exitCodes MDFlexParser::CLIParser::parseInput(int argc, char **arg
           config.soaSortingThreshold.value = stoul(strArg);
         } catch (const exception &) {
           cerr << "Error parsing value for soa-sorting-threshold: " << optarg << endl;
+          displayHelp = true;
+        }
+        break;
+      }
+      case decltype(config.useSortingThresholdBenchmark)::getoptChar: {
+        try {
+          config.useSortingThresholdBenchmark.value = autopas::utils::StringUtils::parseBoolOption(strArg);
+        } catch (const exception &) {
+          cerr << "Error parsing 'use-sorting-threshold-benchmark': " << optarg << endl;
           displayHelp = true;
         }
         break;
@@ -551,6 +565,42 @@ MDFlexParser::exitCodes MDFlexParser::CLIParser::parseInput(int argc, char **arg
         }
         break;
       }
+      case decltype(config.particleDensity)::getoptChar: {
+        try {
+          config.particleDensity.value = stod(strArg);
+          if (config.particleDensity.value <= 0) {
+            cerr << "Particle density has to be a positive (floating point) number!" << endl;
+            displayHelp = true;
+          }
+        } catch (const exception &) {
+          cerr << "Error parsing particle density: " << optarg << endl;
+          displayHelp = true;
+        }
+        break;
+      }
+      case decltype(config.closestPackingStructure)::getoptChar: {
+        if (strArg == "fcc") {
+          config.closestPackingStructure.value = CubeClosestPacked::LatticeStructure::FCC;
+        } else if (strArg == "hcp") {
+          config.closestPackingStructure.value = CubeClosestPacked::LatticeStructure::HCP;
+        } else {
+          cerr << "Unknown structure for closest packing generator: " << strArg << ". Possible values: (hcp fcc)"
+               << endl;
+          displayHelp = true;
+        }
+        break;
+      }
+      case decltype(config.gridAlignmentCentered)::getoptChar: {
+        if (strArg == "true") {
+          config.gridAlignmentCentered.value = true;
+        } else if (strArg == "false") {
+          config.gridAlignmentCentered.value = false;
+        } else {
+          cerr << "Error parsing 'centered' for lattice alignment. Possible values: (true false)" << endl;
+          displayHelp = true;
+        }
+        break;
+      }
       case decltype(config.traversalOptions)::getoptChar: {
         config.traversalOptions.value = autopas::TraversalOption::parseOptions(strArg);
         if (config.traversalOptions.value.empty()) {
@@ -701,6 +751,16 @@ MDFlexParser::exitCodes MDFlexParser::CLIParser::parseInput(int argc, char **arg
         }
         break;
       }
+      case decltype(config.gravity)::getoptChar: {
+        try {
+          config.gravity.value = {0, 0, stod(strArg)};
+        } catch (const exception &) {
+          cerr << "Error parsing gravity: " << optarg << endl;
+          cerr << "Expecting one double as gravity along the z-axis." << endl;
+          displayHelp = true;
+        }
+        break;
+      }
       case decltype(config.boundaryOption)::getoptChar: {
         auto parsedOption = options::BoundaryTypeOption::parseOptionExact((strArg));
         config.boundaryOption.value = {parsedOption, parsedOption, parsedOption};
@@ -765,9 +825,14 @@ MDFlexParser::exitCodes MDFlexParser::CLIParser::parseInput(int argc, char **arg
 
     switch (config.generatorOption.value) {
       case MDFlexConfig::GeneratorOption::grid: {
-        CubeGrid grid(velocity, typeID,
-                      {config.particlesPerDim.value, config.particlesPerDim.value, config.particlesPerDim.value},
-                      config.particleSpacing.value, bottomLeftCorner);
+        CubeGrid grid =
+            config.particleDensity.value > 0
+                ? CubeGrid(velocity, typeID,
+                           {config.particlesPerDim.value, config.particlesPerDim.value, config.particlesPerDim.value},
+                           bottomLeftCorner, config.particleDensity.value, config.gridAlignmentCentered.value)
+                : CubeGrid(velocity, typeID,
+                           {config.particlesPerDim.value, config.particlesPerDim.value, config.particlesPerDim.value},
+                           config.particleSpacing.value, bottomLeftCorner, config.gridAlignmentCentered.value);
         config.cubeGridObjects.push_back(grid);
         break;
       }
@@ -779,9 +844,14 @@ MDFlexParser::exitCodes MDFlexParser::CLIParser::parseInput(int argc, char **arg
         break;
       }
       case MDFlexConfig::GeneratorOption::uniform: {
-        CubeUniform cubeUniform(velocity, typeID, config.particlesTotal.value,
-                                {config.boxLength.value, config.boxLength.value, config.boxLength.value},
-                                bottomLeftCorner);
+        CubeUniform cubeUniform =
+            config.particleDensity.value > 0
+                ? CubeUniform(velocity, typeID,
+                              {config.boxLength.value, config.boxLength.value, config.boxLength.value},
+                              bottomLeftCorner, config.particleDensity.value)
+                : CubeUniform(velocity, typeID, config.particlesTotal.value,
+                              {config.boxLength.value, config.boxLength.value, config.boxLength.value},
+                              bottomLeftCorner);
         config.cubeUniformObjects.push_back(cubeUniform);
         break;
       }
@@ -795,9 +865,13 @@ MDFlexParser::exitCodes MDFlexParser::CLIParser::parseInput(int argc, char **arg
         break;
       }
       case MDFlexConfig::GeneratorOption::closestPacked: {
-        CubeClosestPacked cubeClosestPacked(velocity, typeID, config.particleSpacing.value,
-                                            {config.boxLength.value, config.boxLength.value, config.boxLength.value},
-                                            bottomLeftCorner);
+        const std::array<double, 3> boxLength{config.boxLength.value, config.boxLength.value, config.boxLength.value};
+        CubeClosestPacked cubeClosestPacked =
+            config.particleDensity.value > 0
+                ? CubeClosestPacked(velocity, typeID, boxLength, bottomLeftCorner, config.particleDensity.value,
+                                    config.closestPackingStructure.value, config.gridAlignmentCentered.value)
+                : CubeClosestPacked(velocity, typeID, config.particleSpacing.value, boxLength, bottomLeftCorner,
+                                    config.closestPackingStructure.value, config.gridAlignmentCentered.value);
         config.cubeClosestPackedObjects.push_back(cubeClosestPacked);
         break;
       }

@@ -37,39 +37,77 @@ const std::string MDFlexParser::YamlParser::makeErrorMsg(const YAML::Mark &mark,
   return ss.str();
 }
 
-const CubeGrid MDFlexParser::YamlParser::parseCubeGridObject(const MDFlexConfig &config, const YAML::Node node,
-                                                             std::vector<std::string> &objectErrors) {
+CubeGrid MDFlexParser::YamlParser::parseCubeGridObject(const MDFlexConfig &config, const YAML::Node &node,
+                                                       std::vector<std::string> &objectErrors) {
   const auto velocity = parseComplexTypeValueSequence<double, 3>(node, MDFlexConfig::velocityStr, objectErrors);
   const auto particleType =
       parseComplexTypeValueSingle<unsigned long>(node, MDFlexConfig::particleTypeStr, objectErrors);
   const auto particlesPerDim =
       parseComplexTypeValueSequence<unsigned long, 3>(node, config.particlesPerDim.name, objectErrors);
   const auto particleSpacing =
-      parseComplexTypeValueSingle<double>(node, config.particleSpacing.name.c_str(), objectErrors);
+      parseComplexTypeValueSingle<double>(node, config.particleSpacing.name, objectErrors, false);
+  const auto particleDensity =
+      parseComplexTypeValueSingle<double>(node, config.particleDensity.name, objectErrors, false);
   const auto bottomLeftCorner =
       parseComplexTypeValueSequence<double, 3>(node, MDFlexConfig::bottomLeftBackCornerStr, objectErrors);
 
-  const CubeGrid cubeGrid(velocity, particleType, particlesPerDim, particleSpacing, bottomLeftCorner);
-  return cubeGrid;
+  if (particleSpacing <= 0.0 and particleDensity <= 0.0) {
+    objectErrors.push_back("Either " + config.particleSpacing.name + " or " + config.particleDensity.name +
+                           " must be specified and positive.");
+  } else if (particleSpacing > 0.0 and particleDensity > 0.0) {
+    objectErrors.push_back("Cannot specify both " + config.particleSpacing.name + " and " +
+                           config.particleDensity.name + " for the same object.");
+  }
+
+  bool centered = false;
+  if (node[config.gridAlignmentCentered.name]) {
+    try {
+      centered = node[config.gridAlignmentCentered.name].as<bool>();
+    } catch (const std::exception &) {
+      objectErrors.push_back("Could not parse " + config.gridAlignmentCentered.name + " for the object.");
+    }
+  } else {
+    std::cout << "Warning: The default alignment for CubeClosestPacked lattices will change in AutoPas version 3 to "
+                 "keep space between particles and the bounding box. Use centered : false to explicitly align the "
+                 "first particle on the box origin."
+              << std::endl;
+  }
+
+  if (particleDensity > 0.0) {
+    return {velocity, particleType, particlesPerDim, bottomLeftCorner, particleDensity, centered};
+  }
+  return {velocity, particleType, particlesPerDim, particleSpacing, bottomLeftCorner, centered};
 }
 
-const CubeUniform MDFlexParser::YamlParser::parseCubeUniformObject(const MDFlexConfig &config, const YAML::Node node,
-                                                                   std::vector<std::string> &objectErrors) {
+CubeUniform MDFlexParser::YamlParser::parseCubeUniformObject(const MDFlexConfig &config, const YAML::Node &node,
+                                                             std::vector<std::string> &objectErrors) {
   const auto velocity = parseComplexTypeValueSequence<double, 3>(node, MDFlexConfig::velocityStr, objectErrors);
   const auto particleType =
       parseComplexTypeValueSingle<unsigned long>(node, MDFlexConfig::particleTypeStr, objectErrors);
   const auto numParticles =
-      parseComplexTypeValueSingle<size_t>(node, MDFlexConfig::particlesPerObjectStr, objectErrors);
+      parseComplexTypeValueSingle<size_t>(node, MDFlexConfig::particlesPerObjectStr, objectErrors, false);
+  const auto particleDensity =
+      parseComplexTypeValueSingle<double>(node, config.particleDensity.name, objectErrors, false);
   const auto boxLength = parseComplexTypeValueSequence<double, 3>(node, config.boxLength.name, objectErrors);
   const auto bottomLeftCorner =
       parseComplexTypeValueSequence<double, 3>(node, MDFlexConfig::bottomLeftBackCornerStr, objectErrors);
 
-  const CubeUniform cubeUniform(velocity, particleType, numParticles, boxLength, bottomLeftCorner);
-  return cubeUniform;
+  if (numParticles == 0 and particleDensity <= 0.0) {
+    objectErrors.push_back("Either " + std::string(MDFlexConfig::particlesPerObjectStr) + " or " +
+                           config.particleDensity.name + " must be specified and positive.");
+  } else if (numParticles > 0 and particleDensity > 0.0) {
+    objectErrors.push_back("Cannot specify both " + std::string(MDFlexConfig::particlesPerObjectStr) + " and " +
+                           config.particleDensity.name + " for the same object.");
+  }
+
+  if (particleDensity > 0.0) {
+    return {velocity, particleType, boxLength, bottomLeftCorner, particleDensity};
+  }
+  return {velocity, particleType, numParticles, boxLength, bottomLeftCorner};
 }
 
-const CubeGauss MDFlexParser::YamlParser::parseCubeGaussObject(const MDFlexConfig &config, const YAML::Node node,
-                                                               std::vector<std::string> &objectErrors) {
+CubeGauss MDFlexParser::YamlParser::parseCubeGaussObject(const MDFlexConfig &config, const YAML::Node &node,
+                                                         std::vector<std::string> &objectErrors) {
   const auto velocity = parseComplexTypeValueSequence<double, 3>(node, MDFlexConfig::velocityStr, objectErrors);
   const auto particleType =
       parseComplexTypeValueSingle<unsigned long>(node, MDFlexConfig::particleTypeStr, objectErrors);
@@ -88,35 +126,78 @@ const CubeGauss MDFlexParser::YamlParser::parseCubeGaussObject(const MDFlexConfi
   return cubeGauss;
 }
 
-const Sphere MDFlexParser::YamlParser::parseSphereObject(const MDFlexConfig &config, const YAML::Node node,
-                                                         std::vector<std::string> &objectErrors) {
+Sphere MDFlexParser::YamlParser::parseSphereObject(const MDFlexConfig &config, const YAML::Node &node,
+                                                   std::vector<std::string> &objectErrors) {
   const auto velocity = parseComplexTypeValueSequence<double, 3>(node, MDFlexConfig::velocityStr, objectErrors);
   const auto particleType =
       parseComplexTypeValueSingle<unsigned long>(node, MDFlexConfig::particleTypeStr, objectErrors);
   const auto sphereCenter = parseComplexTypeValueSequence<double, 3>(node, MDFlexConfig::sphereCenterStr, objectErrors);
   const auto sphereRadius = parseComplexTypeValueSingle<double>(node, MDFlexConfig::sphereRadiusStr, objectErrors);
-  const auto particleSpacing =
-      parseComplexTypeValueSingle<double>(node, config.particleSpacing.name.c_str(), objectErrors);
+  const auto particleSpacing = parseComplexTypeValueSingle<double>(node, config.particleSpacing.name, objectErrors);
 
   const Sphere sphere(velocity, particleType, sphereCenter, sphereRadius, particleSpacing);
   return sphere;
 }
 
-const CubeClosestPacked MDFlexParser::YamlParser::parseCubeClosestPacked(const MDFlexConfig &config,
-                                                                         const YAML::Node node,
-                                                                         std::vector<std::string> &objectErrors) {
+CubeClosestPacked MDFlexParser::YamlParser::parseCubeClosestPacked(const MDFlexConfig &config, const YAML::Node &node,
+                                                                   std::vector<std::string> &objectErrors) {
   const auto velocity = parseComplexTypeValueSequence<double, 3>(node, MDFlexConfig::velocityStr, objectErrors);
   const auto particleType =
       parseComplexTypeValueSingle<unsigned long>(node, MDFlexConfig::particleTypeStr, objectErrors);
   const auto particleSpacing =
-      parseComplexTypeValueSingle<double>(node, config.particleSpacing.name.c_str(), objectErrors);
+      parseComplexTypeValueSingle<double>(node, config.particleSpacing.name, objectErrors, false);
+  const auto particleDensity =
+      parseComplexTypeValueSingle<double>(node, config.particleDensity.name, objectErrors, false);
   const auto boxLength = parseComplexTypeValueSequence<double, 3>(node, config.boxLength.name, objectErrors);
   const auto bottomLeftCorner =
       parseComplexTypeValueSequence<double, 3>(node, MDFlexConfig::bottomLeftBackCornerStr, objectErrors);
 
-  const CubeClosestPacked cubeClosestPacked(velocity, particleType, particleSpacing, boxLength, bottomLeftCorner);
+  if (particleSpacing <= 0.0 and particleDensity <= 0.0) {
+    objectErrors.push_back("Either " + config.particleSpacing.name + " or " + config.particleDensity.name +
+                           " must be specified and positive.");
+  } else if (particleSpacing > 0.0 and particleDensity > 0.0) {
+    objectErrors.push_back("Cannot specify both " + config.particleSpacing.name + " and " +
+                           config.particleDensity.name + " for the same object.");
+  }
 
-  return cubeClosestPacked;
+  auto structureStr = parseComplexTypeValueSingle<std::string>(node, "structure", objectErrors, false);
+  if (structureStr.empty()) {
+    structureStr =
+        parseComplexTypeValueSingle<std::string>(node, config.closestPackingStructure.name, objectErrors, false);
+  }
+  CubeClosestPacked::LatticeStructure structure = CubeClosestPacked::LatticeStructure::HCP;
+  if (not structureStr.empty()) {
+    if (structureStr == "fcc") {
+      structure = CubeClosestPacked::LatticeStructure::FCC;
+    } else if (structureStr == "hcp") {
+      structure = CubeClosestPacked::LatticeStructure::HCP;
+    } else {
+      objectErrors.push_back("Unknown structure: " + structureStr + ". Possible values: (hcp fcc)");
+    }
+  } else {
+    std::cout << "Warning: The default structure for CubeClosestPacked will change from HCP to FCC with the release of "
+                 "AutoPas version 3."
+              << std::endl;
+  }
+
+  bool centered = false;
+  if (node[config.gridAlignmentCentered.name]) {
+    try {
+      centered = node[config.gridAlignmentCentered.name].as<bool>();
+    } catch (const std::exception &) {
+      objectErrors.push_back("Could not parse " + config.gridAlignmentCentered.name + " for the object.");
+    }
+  } else {
+    std::cout << "Warning: The default alignment for CubeClosestPacked lattices will change in AutoPas version 3 to "
+                 "keep space between particles and the bounding box. Use centered : false to explicitly align the "
+                 "first particle on the box origin."
+              << std::endl;
+  }
+
+  if (particleDensity > 0.0) {
+    return {velocity, particleType, boxLength, bottomLeftCorner, particleDensity, structure, centered};
+  }
+  return {velocity, particleType, particleSpacing, boxLength, bottomLeftCorner, structure, centered};
 }
 
 bool MDFlexParser::YamlParser::parseYamlFile(MDFlexConfig &config) {
@@ -398,6 +479,11 @@ bool MDFlexParser::YamlParser::parseYamlFile(MDFlexConfig &config) {
         description = config.useLOESSSmoothening.description;
 
         config.useLOESSSmoothening.value = node[key].as<bool>();
+      } else if (key == config.useSortingThresholdBenchmark.name) {
+        expected = "Boolean Value";
+        description = config.useSortingThresholdBenchmark.description;
+
+        config.useSortingThresholdBenchmark.value = node[key].as<bool>();
       } else if (key == config.tuningMaxEvidence.name) {
         expected = "Unsigned Integer >= 1";
         description = config.tuningMaxEvidence.description;
@@ -609,6 +695,11 @@ bool MDFlexParser::YamlParser::parseYamlFile(MDFlexConfig &config) {
         description = config.globalForce.description;
 
         config.globalForce.value = {node[key][0].as<double>(), node[key][1].as<double>(), node[key][2].as<double>()};
+      } else if (key == config.gravity.name) {
+        expected = "YAML-sequence of three floats. Example: [0, 0, -9.81].";
+        description = config.gravity.description;
+
+        config.gravity.value = {node[key][0].as<double>(), node[key][1].as<double>(), node[key][2].as<double>()};
       } else if (key == MDFlexConfig::siteStr) {
         expected = "See AllOptions.yaml for examples.";
         description = "";

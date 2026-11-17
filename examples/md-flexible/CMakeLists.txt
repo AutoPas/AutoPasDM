@@ -7,7 +7,7 @@ include(autopas_yaml-cpp)
 include(autopas_all)
 
 option(MD_FLEXIBLE_USE_MPI "Enable MPI support for the AutoPasDM md-flexible example." ON)
-option(MD_FLEXIBLE_FUNCTOR_AUTOVEC "Compile AutoVec Functor." ON)
+option(MD_FLEXIBLE_FUNCTOR_AUTOVEC "Compile AutoVec Functor." OFF)
 option(MD_FLEXIBLE_FUNCTOR_AVX "If instruction set is available, compile AVX Functor." OFF)
 option(MD_FLEXIBLE_FUNCTOR_SVE "If instruction set is available, compile SVE Functor." OFF)
 option(MD_FLEXIBLE_FUNCTOR_HWY "Compile Highway Functor." ON)
@@ -163,6 +163,29 @@ if(AUTOPASDM_BUILD_TESTS)
                 PROCESSORS 2
                 LABELS "md-flexible;integration;load-balancing"
                 PASS_REGULAR_EXPRESSION "Owned: 126"
+        )
+    endif()
+
+    # Exercise AutoPas' MPI divide-and-conquer tuner through the AutoPasDM
+    # md-flexible integration on two ranks.
+    if(MD_FLEXIBLE_USE_MPI)
+        add_test(
+            NAME md-flexible.test-mpi-tuning
+            COMMAND
+                ${MPIEXEC_EXECUTABLE}
+                ${MPIEXEC_NUMPROC_FLAG} 2
+                ${MPIEXEC_PREFLAGS}
+                $<TARGET_FILE:md-flexible>
+                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/input/autopasdm_mpi_tuning.yaml"
+                ${MPIEXEC_POSTFLAGS}
+            CONFIGURATIONS checkExamples
+        )
+        set_tests_properties(
+            md-flexible.test-mpi-tuning
+            PROPERTIES
+                PROCESSORS 2
+                LABELS "md-flexible;integration;tuning"
+                PASS_REGULAR_EXPRESSION "Owned: 64"
         )
     endif()
 

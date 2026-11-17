@@ -8,6 +8,8 @@
 
 #include <getopt.h>
 
+#include <algorithm>
+#include <limits>
 #include <map>
 #include <set>
 #include <utility>
@@ -293,7 +295,7 @@ class MDFlexConfig {
    * vectorizationPattern
    */
   MDFlexOption<std::set<autopas::VectorizationPatternOption>, __LINE__> vecPatternOptions{
-      autopas::VectorizationPatternOption::getMostOptions(), "vectorization-pattern", true,
+      autopas::VectorizationPatternOption::getAllApplicablePatterns(), "vectorization-pattern", true,
       "Vectorization Pattern for HWY Functor."};
   /**
    * cellSizeFactors
@@ -386,7 +388,7 @@ class MDFlexConfig {
    * EarlyStoppingFactor
    */
   MDFlexOption<double, __LINE__> earlyStoppingFactor{
-      std::numeric_limits<double>::infinity(), "early-stopping-factor", false,
+      std::numeric_limits<double>::max(), "early-stopping-factor", false,
       "EarlyStoppingFactor for the auto-tuner. A configuration seeming to perform worse than the "
       "previously best configuration "
       "by this factor will not be sampled again during that tuning phase."};
@@ -480,12 +482,20 @@ class MDFlexConfig {
    * boxMin
    */
   MDFlexOption<std::array<double, 3>, 0> boxMin{
-      {0, 0, 0}, "box-min", true, "Lower front left corner of the simulation box."};
+      {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(),
+       std::numeric_limits<double>::quiet_NaN()},
+      "box-min",
+      true,
+      "Lower front left corner of the simulation box."};
   /**
    * boxMax
    */
   MDFlexOption<std::array<double, 3>, 0> boxMax{
-      {1, 1, 1}, "box-max", true, "Upper back right corner of the simulation box."};
+      {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(),
+       std::numeric_limits<double>::quiet_NaN()},
+      "box-max",
+      true,
+      "Upper back right corner of the simulation box."};
 
   /**
    * loadBalancingInterval
@@ -582,10 +592,16 @@ class MDFlexConfig {
    * Default comes from the LJFunctorHWY Benchmarks.
    */
   MDFlexOption<size_t, __LINE__> soaSortingThreshold{
-      50, "soa-sorting-threshold", true,
+      100, "soa-sorting-threshold", true,
       "Threshold for the SoA functor pair path to start sorting. If the sum of the SoA buffer sizes of two cells is "
       "greater or equal to that value, particles are sorted by their projection onto the cell-pair direction vector "
       "before computing interactions."};
+  /**
+   * If true, AutoPas benchmarks the optimal AoS/SoA pair-sorting thresholds for each cell layout.
+   */
+  MDFlexOption<bool, __LINE__> useSortingThresholdBenchmark{
+      false, "use-sorting-threshold-benchmark", true,
+      "Benchmark the optimal AoS/SoA pair-sorting thresholds instead of using fixed thresholds."};
 
   // Options for additional Object Generation on command line
   /**
@@ -621,6 +637,23 @@ class MDFlexConfig {
    */
   MDFlexOption<double, __LINE__> particleSpacing{1.1225 * 1, "particle-spacing", true,
                                                  "Space between two particles for the grid generator."};
+  /**
+   * Target particle density used by supported object generators.
+   */
+  MDFlexOption<double, __LINE__> particleDensity{
+      0.0, "particle-density", true,
+      "Target particle density. Can be used instead of particle-spacing or numberOfParticles where supported."};
+  /**
+   * Lattice structure for the closest-packed generator.
+   */
+  MDFlexOption<CubeClosestPacked::LatticeStructure, __LINE__> closestPackingStructure{
+      CubeClosestPacked::LatticeStructure::HCP, "structure", true,
+      "Structure of the closest-packed generator. Possible values: (hcp fcc). Default: hcp"};
+  /**
+   * Whether regular and closest-packed lattices are centered in their configured boxes.
+   */
+  MDFlexOption<bool, __LINE__> gridAlignmentCentered{true, "centered", true,
+                                                     "Center the generated lattice in its configured box."};
   /**
    * generatorOption
    */
@@ -793,13 +826,10 @@ class MDFlexConfig {
       "Brownian motion. Possible Values: (true false) Default: true"};
 
   /**
-   * Global external force like e.g. gravity
+   * Global external force
    */
   MDFlexOption<std::array<double, 3>, __LINE__> globalForce{
-      {0, 0, 0},
-      "globalForce",
-      true,
-      "Global force applied on every particle. Useful to model e.g. gravity. Default: {0,0,0}"};
+      {0, 0, 0}, "globalForce", true, "Global force applied on every particle. Default: {0,0,0}"};
 
   /**
    * Convenience function testing if the global force contains only 0 entries.
@@ -811,6 +841,22 @@ class MDFlexConfig {
       isZero &= gf == 0;
     }
     return isZero;
+  }
+
+  /**
+   * Gravitational acceleration, which is scaled by particle/site mass.
+   */
+  MDFlexOption<std::array<double, 3>, __LINE__> gravity{{0, 0, 0},
+                                                        "gravity",
+                                                        true,
+                                                        "Gravitational acceleration applied to each particle/site; the "
+                                                        "resulting force scales with mass. Default: {0,0,0}"};
+
+  /**
+   * @return true if all components of gravity are zero.
+   */
+  [[nodiscard]] bool gravityIsZero() const {
+    return std::all_of(gravity.value.begin(), gravity.value.end(), [](double value) { return value == 0.; });
   }
 
   // Checkpoint Options

@@ -161,8 +161,8 @@ const std::vector<T> parseComplexTypeValueSequence(const YAML::Node node, const 
  * @param objectErrors Vector to store all errors during parsing of one object
  * @return Particles from the CubeGrid-Generator.
  */
-const CubeGrid parseCubeGridObject(const MDFlexConfig &config, const YAML::Node node,
-                                   std::vector<std::string> &objectErrors);
+CubeGrid parseCubeGridObject(const MDFlexConfig &config, const YAML::Node &node,
+                             std::vector<std::string> &objectErrors);
 
 /**
  * Parses a CubeUniform-Object from a CubeUniform-Yaml-Node.
@@ -171,8 +171,8 @@ const CubeGrid parseCubeGridObject(const MDFlexConfig &config, const YAML::Node 
  * @param objectErrors Vector to store all errors during parsing of one object
  * @return Particles from the CubeUniform-Generator.
  */
-const CubeUniform parseCubeUniformObject(const MDFlexConfig &config, const YAML::Node node,
-                                         std::vector<std::string> &objectErrors);
+CubeUniform parseCubeUniformObject(const MDFlexConfig &config, const YAML::Node &node,
+                                   std::vector<std::string> &objectErrors);
 
 /**
  * Parses a CubeGauss-Object from a CubeGauss-Yaml-Node.
@@ -181,8 +181,8 @@ const CubeUniform parseCubeUniformObject(const MDFlexConfig &config, const YAML:
  * @param objectErrors Vector to store all errors during parsing of one object
  * @return Particles from the CubeGauss-Generator.
  */
-const CubeGauss parseCubeGaussObject(const MDFlexConfig &config, const YAML::Node node,
-                                     std::vector<std::string> &objectErrors);
+CubeGauss parseCubeGaussObject(const MDFlexConfig &config, const YAML::Node &node,
+                               std::vector<std::string> &objectErrors);
 
 /**
  * Parses a Sphere-Object from a Sphere-Yaml-Node.
@@ -191,8 +191,7 @@ const CubeGauss parseCubeGaussObject(const MDFlexConfig &config, const YAML::Nod
  * @param objectErrors Vector to store all errors during parsing of one object
  * @return Particles from the Sphere-Generator.
  */
-const Sphere parseSphereObject(const MDFlexConfig &config, const YAML::Node node,
-                               std::vector<std::string> &objectErrors);
+Sphere parseSphereObject(const MDFlexConfig &config, const YAML::Node &node, std::vector<std::string> &objectErrors);
 
 /**
  * Parses a CubeClosestPacked-Object from a CubeClosestPacked-Yaml-Node.
@@ -201,7 +200,7 @@ const Sphere parseSphereObject(const MDFlexConfig &config, const YAML::Node node
  * @param objectErrors Vector to store all errors during parsing of one object
  * @return Particles from the CubeClosestPacked-Generator.
  */
-const CubeClosestPacked parseCubeClosestPacked(const MDFlexConfig &config, const YAML::Node node,
-                                               std::vector<std::string> &objectErrors);
+CubeClosestPacked parseCubeClosestPacked(const MDFlexConfig &config, const YAML::Node &node,
+                                         std::vector<std::string> &objectErrors);
 
 }  // namespace MDFlexParser::YamlParser

@@ -36,7 +36,8 @@ cell-size                            :  [1]
 deltaT                               :  0.000001
 pause-simulation-during-tuning       :  true
 aos-sorting-threshold                :  8
-soa-sorting-threshold                :  50
+soa-sorting-threshold                :  100
+use-sorting-threshold-benchmark      :  false
 tuning-phases                        :  0
 iterations                           :  10
 boundary-type                        :  [periodic, periodic, periodic]
@@ -52,6 +53,7 @@ mpi-tuning-max-difference-for-bucket :  0.2
 mpi-tuning-weight-for-max-density    :  0.1
 fastParticlesThrow                   :  false
 globalForce                          :  [0, 0, 0]
+gravity                              :  [0, 0, 0]
 load-balancer                        :  InvertedPressure
 Sites:
   0:
@@ -73,6 +75,8 @@ Objects:
     0:
       particles-per-dimension        :  [10, 10, 10]
       particle-spacing               :  1.1225
+      # Alternatively to particle-spacing, particle-density can be specified:
+      # particle-density             :  0.7071
       bottomLeftCorner               :  [0, 0, 0]
       velocity                       :  [0, 0, 0]
       # For single-site simulations, particle-type-id fills the object with single-site LJ molecules with the LJ parameters
@@ -80,6 +84,8 @@ Objects:
       # parameters given above for Molecule-0. See particleTypeStr in the documentation for MDFlexConfig.h for more
       # information.
       particle-type-id               :  0
+      # If true, the first particle is placed at half a spacing from the box origin.
+      centered                       :  true
   CubeGauss:
     0:
       distribution-mean              :  [17, 17, 17]
@@ -92,17 +98,25 @@ Objects:
   CubeUniform:
     0:
       numberOfParticles              :  100
+      # Alternatively to numberOfParticles, particle-density can be specified:
+      # particle-density             :  0.1
       box-length                     :  [10, 10, 10]
       bottomLeftCorner               :  [15, 0, 0]
       velocity                       :  [0, 0, 0]
       particle-type-id               :  0
   CubeClosestPacked:
     0:
+      # structure can be either 'hcp' (hexagonal closest packing) or 'fcc' (face-centered cubic).
+      structure                      :  fcc
       box-length                     :  [4, 4, 4]
       bottomLeftCorner               :  [0, 0, 15]
       particle-spacing               :  1.1225
+      # Alternatively to particle-spacing, particle-density can be specified:
+      # particle-density             :  1.0
       velocity                       :  [0, 0, 0]
       particle-type-id               :  0
+      # If true, place the lattice slightly inward from the configured box boundaries.
+      centered                       :  true
   Sphere:
     0:
       center                         :  [4, 16, 4]

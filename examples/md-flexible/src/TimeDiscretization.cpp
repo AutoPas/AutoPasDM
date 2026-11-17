@@ -5,9 +5,11 @@
  */
 #include "TimeDiscretization.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 #include "autopas/utils/ExceptionHandler.h"
@@ -19,8 +21,8 @@ namespace {
 #ifndef AUTOPAS_ENABLE_DYNAMIC_CONTAINERS
 bool updatePositionAndResetForces(ParticleType &particle,
                                   const ParticlePropertiesLibraryType &particlePropertiesLibrary, const double deltaT,
-                                  const std::array<double, 3> &globalForce, const double maxAllowedDistanceMoved,
-                                  const double maxAllowedDistanceMovedSquared) {
+                                  const std::array<double, 3> &globalForce, const std::array<double, 3> &gravity,
+                                  const double maxAllowedDistanceMoved, const double maxAllowedDistanceMovedSquared) {
   using autopas::utils::ArrayMath::dot;
   using namespace autopas::utils::ArrayMath::literals;
 
@@ -28,7 +30,7 @@ bool updatePositionAndResetForces(ParticleType &particle,
   auto v = particle.getV();
   auto f = particle.getF();
   particle.setOldF(f);
-  particle.setF(globalForce);
+  particle.setF(globalForce + gravity * m);
   v *= deltaT;
   f *= (deltaT * deltaT / (2 * m));
   const auto displacement = v + f;
@@ -48,14 +50,14 @@ bool updatePositionAndResetForces(ParticleType &particle,
 #else
 void updatePositionAndResetForces(ParticleType &particle,
                                   const ParticlePropertiesLibraryType &particlePropertiesLibrary, const double deltaT,
-                                  const std::array<double, 3> &globalForce) {
+                                  const std::array<double, 3> &globalForce, const std::array<double, 3> &gravity) {
   using namespace autopas::utils::ArrayMath::literals;
 
   const auto m = particlePropertiesLibrary.getMolMass(particle.getTypeId());
   auto v = particle.getV();
   auto f = particle.getF();
   particle.setOldF(f);
-  particle.setF(globalForce);
+  particle.setF(globalForce + gravity * m);
   v *= deltaT;
   f *= (deltaT * deltaT / (2 * m));
   particle.addR(v + f);
@@ -64,7 +66,7 @@ void updatePositionAndResetForces(ParticleType &particle,
 
 void updateQuaternionAndResetTorque(ParticleType &particle,
                                     const ParticlePropertiesLibraryType &particlePropertiesLibrary, const double deltaT,
-                                    const std::array<double, 3> &globalForce) {
+                                    const std::array<double, 3> &globalForce, const std::array<double, 3> &gravity) {
   using namespace autopas::utils::ArrayMath::literals;
   using autopas::utils::ArrayMath::cross;
   using autopas::utils::ArrayMath::div;
@@ -110,12 +112,15 @@ void updateQuaternionAndResetTorque(ParticleType &particle,
   particle.setAngularVel(angVelWHalfStep);
 
   particle.setTorque({0., 0., 0.});
-  if (std::any_of(globalForce.begin(), globalForce.end(),
-                  [](double i) { return std::abs(i) > std::numeric_limits<double>::epsilon(); })) {
+  const auto isNonZero = [](double value) { return std::abs(value) > std::numeric_limits<double>::epsilon(); };
+  if (std::any_of(globalForce.begin(), globalForce.end(), isNonZero) or
+      std::any_of(gravity.begin(), gravity.end(), isNonZero)) {
     const auto unrotatedSitePositions = particlePropertiesLibrary.getSitePositions(particle.getTypeId());
     const auto rotatedSitePositions = rotateVectorOfPositions(qFullStep, unrotatedSitePositions);
+    const auto siteTypes = particlePropertiesLibrary.getSiteTypes(particle.getTypeId());
     for (size_t site = 0; site < particlePropertiesLibrary.getNumSites(particle.getTypeId()); site++) {
-      particle.addTorque(cross(rotatedSitePositions[site], globalForce));
+      const auto siteMass = particlePropertiesLibrary.getSiteMass(siteTypes[site]);
+      particle.addTorque(cross(rotatedSitePositions[site], globalForce + gravity * siteMass));
     }
   }
 #else
@@ -123,6 +128,7 @@ void updateQuaternionAndResetTorque(ParticleType &particle,
   (void)particlePropertiesLibrary;
   (void)deltaT;
   (void)globalForce;
+  (void)gravity;
   autopas::utils::ExceptionHandler::exception(
       "Attempting to perform rotational integrations when md-flexible has not been compiled with multi-site support!");
 #endif
@@ -167,18 +173,19 @@ void updateAngularVelocity(ParticleType &particle, const ParticlePropertiesLibra
 void calculatePositionsAndResetForces(autopasdm::AutoPasDM<ParticleType> &container,
                                       const ParticlePropertiesLibraryType &particlePropertiesLibrary,
                                       const double &deltaT, const std::array<double, 3> &globalForce,
-                                      bool fastParticlesThrow) {
+                                      const std::array<double, 3> &gravity, bool fastParticlesThrow) {
 #ifdef AUTOPAS_ENABLE_DYNAMIC_CONTAINERS
-  container.applyToOwnedParticles(
-      [&](auto &particle) { updatePositionAndResetForces(particle, particlePropertiesLibrary, deltaT, globalForce); });
+  container.applyToOwnedParticles([&](auto &particle) {
+    updatePositionAndResetForces(particle, particlePropertiesLibrary, deltaT, globalForce, gravity);
+  });
 #else
   const auto maxAllowedDistanceMoved = container.getVerletSkin() / container.getVerletRebuildFrequency() / 2.;
   const auto maxAllowedDistanceMovedSquared = maxAllowedDistanceMoved * maxAllowedDistanceMoved;
   std::atomic_bool particleTooFast{false};
 
   container.applyToOwnedParticles([&](auto &particle) {
-    if (updatePositionAndResetForces(particle, particlePropertiesLibrary, deltaT, globalForce, maxAllowedDistanceMoved,
-                                     maxAllowedDistanceMovedSquared)) {
+    if (updatePositionAndResetForces(particle, particlePropertiesLibrary, deltaT, globalForce, gravity,
+                                     maxAllowedDistanceMoved, maxAllowedDistanceMovedSquared)) {
       particleTooFast.store(true, std::memory_order_relaxed);
     }
   });
@@ -192,11 +199,11 @@ void calculatePositionsAndResetForces(autopasdm::AutoPasDM<ParticleType> &contai
 void calculatePositionsAndResetForces(autopas::AutoPas<ParticleType> &autoPasContainer,
                                       const ParticlePropertiesLibraryType &particlePropertiesLibrary,
                                       const double &deltaT, const std::array<double, 3> &globalForce,
-                                      bool fastParticlesThrow) {
+                                      const std::array<double, 3> &gravity, bool fastParticlesThrow) {
 #ifdef AUTOPAS_ENABLE_DYNAMIC_CONTAINERS
   AUTOPAS_OPENMP(parallel)
   for (auto iter = autoPasContainer.begin(autopas::IteratorBehavior::owned); iter.isValid(); ++iter) {
-    updatePositionAndResetForces(*iter, particlePropertiesLibrary, deltaT, globalForce);
+    updatePositionAndResetForces(*iter, particlePropertiesLibrary, deltaT, globalForce, gravity);
   }
 #else
   const auto maxAllowedDistanceMoved =
@@ -206,8 +213,8 @@ void calculatePositionsAndResetForces(autopas::AutoPas<ParticleType> &autoPasCon
 
   AUTOPAS_OPENMP(parallel)
   for (auto iter = autoPasContainer.begin(autopas::IteratorBehavior::owned); iter.isValid(); ++iter) {
-    if (updatePositionAndResetForces(*iter, particlePropertiesLibrary, deltaT, globalForce, maxAllowedDistanceMoved,
-                                     maxAllowedDistanceMovedSquared)) {
+    if (updatePositionAndResetForces(*iter, particlePropertiesLibrary, deltaT, globalForce, gravity,
+                                     maxAllowedDistanceMoved, maxAllowedDistanceMovedSquared)) {
       particleTooFast.store(true, std::memory_order_relaxed);
     }
   }
@@ -220,16 +227,18 @@ void calculatePositionsAndResetForces(autopas::AutoPas<ParticleType> &autoPasCon
 
 void calculateQuaternionsAndResetTorques(autopasdm::AutoPasDM<ParticleType> &container,
                                          const ParticlePropertiesLibraryType &particlePropertiesLibrary,
-                                         const double &deltaT, const std::array<double, 3> &globalForce) {
+                                         const double &deltaT, const std::array<double, 3> &globalForce,
+                                         const std::array<double, 3> &gravity) {
 #if MD_FLEXIBLE_MODE == MULTISITE
   container.applyToOwnedParticles([&](auto &particle) {
-    updateQuaternionAndResetTorque(particle, particlePropertiesLibrary, deltaT, globalForce);
+    updateQuaternionAndResetTorque(particle, particlePropertiesLibrary, deltaT, globalForce, gravity);
   });
 #else
   (void)container;
   (void)particlePropertiesLibrary;
   (void)deltaT;
   (void)globalForce;
+  (void)gravity;
   autopas::utils::ExceptionHandler::exception(
       "Attempting to perform rotational integrations when md-flexible has not been compiled with multi-site support!");
 #endif
@@ -237,17 +246,19 @@ void calculateQuaternionsAndResetTorques(autopasdm::AutoPasDM<ParticleType> &con
 
 void calculateQuaternionsAndResetTorques(autopas::AutoPas<ParticleType> &autoPasContainer,
                                          const ParticlePropertiesLibraryType &particlePropertiesLibrary,
-                                         const double &deltaT, const std::array<double, 3> &globalForce) {
+                                         const double &deltaT, const std::array<double, 3> &globalForce,
+                                         const std::array<double, 3> &gravity) {
 #if MD_FLEXIBLE_MODE == MULTISITE
   AUTOPAS_OPENMP(parallel)
   for (auto iter = autoPasContainer.begin(autopas::IteratorBehavior::owned); iter.isValid(); ++iter) {
-    updateQuaternionAndResetTorque(*iter, particlePropertiesLibrary, deltaT, globalForce);
+    updateQuaternionAndResetTorque(*iter, particlePropertiesLibrary, deltaT, globalForce, gravity);
   }
 #else
   (void)autoPasContainer;
   (void)particlePropertiesLibrary;
   (void)deltaT;
   (void)globalForce;
+  (void)gravity;
   autopas::utils::ExceptionHandler::exception(
       "Attempting to perform rotational integrations when md-flexible has not been compiled with multi-site support!");
 #endif

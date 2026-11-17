@@ -28,14 +28,15 @@ namespace TimeDiscretization {
  * @param container The distributed particle container for which to update the positions.
  * @param particlePropertiesLibrary The particle properties library for the particles in the container.
  * @param deltaT The time step width.
- * @param globalForce Base force value to which every particle is reset.
+ * @param globalForce Base force value applied to every particle.
+ * @param gravity Gravitational acceleration, scaled by particle mass.
  * @param fastParticlesThrow When true throws an exception if particles moved too far for verlet technique
  * (>skin/rebuildFrequency/2). Does nothing if dynamic containers are enabled.
  */
 void calculatePositionsAndResetForces(autopasdm::AutoPasDM<ParticleType> &container,
                                       const ParticlePropertiesLibraryType &particlePropertiesLibrary,
                                       const double &deltaT, const std::array<double, 3> &globalForce,
-                                      bool fastParticlesThrow);
+                                      const std::array<double, 3> &gravity, bool fastParticlesThrow);
 
 /**
  * Legacy overload used by the original md-flexible unit tests.
@@ -44,7 +45,23 @@ void calculatePositionsAndResetForces(autopasdm::AutoPasDM<ParticleType> &contai
 void calculatePositionsAndResetForces(autopas::AutoPas<ParticleType> &autoPasContainer,
                                       const ParticlePropertiesLibraryType &particlePropertiesLibrary,
                                       const double &deltaT, const std::array<double, 3> &globalForce,
-                                      bool fastParticlesThrow);
+                                      const std::array<double, 3> &gravity, bool fastParticlesThrow);
+
+inline void calculatePositionsAndResetForces(autopasdm::AutoPasDM<ParticleType> &container,
+                                             const ParticlePropertiesLibraryType &particlePropertiesLibrary,
+                                             const double &deltaT, const std::array<double, 3> &globalForce,
+                                             bool fastParticlesThrow) {
+  calculatePositionsAndResetForces(container, particlePropertiesLibrary, deltaT, globalForce, {0., 0., 0.},
+                                   fastParticlesThrow);
+}
+
+inline void calculatePositionsAndResetForces(autopas::AutoPas<ParticleType> &autoPasContainer,
+                                             const ParticlePropertiesLibraryType &particlePropertiesLibrary,
+                                             const double &deltaT, const std::array<double, 3> &globalForce,
+                                             bool fastParticlesThrow) {
+  calculatePositionsAndResetForces(autoPasContainer, particlePropertiesLibrary, deltaT, globalForce, {0., 0., 0.},
+                                   fastParticlesThrow);
+}
 
 /**
  * Calculate and update the quaternion for every particle. Uses the rotational velocity-verlet algorithm as described by
@@ -56,12 +73,26 @@ void calculatePositionsAndResetForces(autopas::AutoPas<ParticleType> &autoPasCon
  */
 void calculateQuaternionsAndResetTorques(autopasdm::AutoPasDM<ParticleType> &container,
                                          const ParticlePropertiesLibraryType &particlePropertiesLibrary,
-                                         const double &deltaT, const std::array<double, 3> &globalForce);
+                                         const double &deltaT, const std::array<double, 3> &globalForce,
+                                         const std::array<double, 3> &gravity);
 
 /** Legacy overload used by the original md-flexible unit tests. */
 void calculateQuaternionsAndResetTorques(autopas::AutoPas<ParticleType> &autoPasContainer,
                                          const ParticlePropertiesLibraryType &particlePropertiesLibrary,
-                                         const double &deltaT, const std::array<double, 3> &globalForce);
+                                         const double &deltaT, const std::array<double, 3> &globalForce,
+                                         const std::array<double, 3> &gravity);
+
+inline void calculateQuaternionsAndResetTorques(autopasdm::AutoPasDM<ParticleType> &container,
+                                                const ParticlePropertiesLibraryType &particlePropertiesLibrary,
+                                                const double &deltaT, const std::array<double, 3> &globalForce) {
+  calculateQuaternionsAndResetTorques(container, particlePropertiesLibrary, deltaT, globalForce, {0., 0., 0.});
+}
+
+inline void calculateQuaternionsAndResetTorques(autopas::AutoPas<ParticleType> &autoPasContainer,
+                                                const ParticlePropertiesLibraryType &particlePropertiesLibrary,
+                                                const double &deltaT, const std::array<double, 3> &globalForce) {
+  calculateQuaternionsAndResetTorques(autoPasContainer, particlePropertiesLibrary, deltaT, globalForce, {0., 0., 0.});
+}
 
 /**
  * Calculate and update the velocity for every particle using the the Störmer-Verlet Algorithm.

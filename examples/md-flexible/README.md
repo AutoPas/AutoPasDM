@@ -109,6 +109,11 @@ specifies the objects directly. For a list of all possible objects and their
 descriptions see [`src/Objects`](https://autopas.github.io/doxygen_documentation_md-flexible/git-master/dir_8e5023335c6d80afeb9fe41ac1daf95f.html).
 For examples how to define and configure each object see [`input/AllOptions.yaml`](https://github.com/AutoPas/AutoPas/blob/master/examples/md-flexible/input/AllOptions.yaml).
 
+`CubeGrid` and `CubeClosestPacked` accept either particle spacing or target density; `CubeUniform` accepts a particle
+count or target density. Closest-packed generation supports HCP and FCC lattices, and regular lattices can be centered
+within their configured bounds. The `globalForce` option applies a force to each molecule, while `gravity` specifies a
+mass-scaled acceleration and, for multi-site molecules, its corresponding torque.
+
 ### Output
 
 * After every execution, a configuration YAML file is generated. It is possible
@@ -139,6 +144,9 @@ to be set through a YAML file.
 ### Load Balancing
 MD-Flexible allows users to select between two load balancers: The Inverted Pressure method and ALL's Tensor method.
 The load balancer can be selected using the 'load-balancer' configuration option.
+
+AutoPas can also benchmark the AoS/SoA pair-sorting thresholds instead of using the configured fixed thresholds. Enable
+this with `use-sorting-threshold-benchmark`.
 
 ### Command line Completions
 

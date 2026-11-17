@@ -11,6 +11,7 @@
 
 #include "TypeDefinitions.h"
 #include "autopas/AutoPasDecl.h"
+#include "autopas/utils/ArrayMath.h"
 #include "autopas/utils/WrapOpenMP.h"
 
 // Declare the main AutoPas class and the computeInteractions() methods with all used functors as extern template
@@ -206,6 +207,7 @@ Simulation::Simulation(const MDFlexConfig &configuration, autopasdm::Runtime &ru
         autoPas.setUseTuningLogger(_configuration.useTuningLogger.value);
         autoPas.setAoSSortingThreshold(_configuration.aosSortingThreshold.value);
         autoPas.setSoASortingThreshold(_configuration.soaSortingThreshold.value);
+        autoPas.setUseSortingThresholdBenchmark(_configuration.useSortingThresholdBenchmark.value);
         autoPas.setOutputSuffix(outputSuffix);
       });
 
@@ -464,7 +466,7 @@ void Simulation::updatePositionsAndResetForces() {
   _timers.positionUpdate.start();
   TimeDiscretization::calculatePositionsAndResetForces(
       *_autoPasDMContainer, *(_configuration.getParticlePropertiesLibrary()), _configuration.deltaT.value,
-      _configuration.globalForce.value, _configuration.fastParticlesThrow.value);
+      _configuration.globalForce.value, _configuration.gravity.value, _configuration.fastParticlesThrow.value);
   _timers.positionUpdate.stop();
 }
 
@@ -472,7 +474,7 @@ void Simulation::updateQuaternions() {
   _timers.quaternionUpdate.start();
   TimeDiscretization::calculateQuaternionsAndResetTorques(
       *_autoPasDMContainer, *(_configuration.getParticlePropertiesLibrary()), _configuration.deltaT.value,
-      _configuration.globalForce.value);
+      _configuration.globalForce.value, _configuration.gravity.value);
   _timers.quaternionUpdate.stop();
 }
 
@@ -585,6 +587,8 @@ void Simulation::logSimulationState() {
 }
 
 void Simulation::updateSimulationPauseState() {
+  using namespace autopas::utils::ArrayMath::literals;
+
   // If we are at the beginning of a tuning phase, we need to freeze the simulation
   if (_currentIterationIsTuningIteration and (not _previousIterationWasTuningIteration)) {
     std::cout << "Iteration " << _iteration << ": Freezing simulation for tuning phase. Starting tuning phase...\n";
@@ -596,8 +600,11 @@ void Simulation::updateSimulationPauseState() {
     std::cout << "Iteration " << _iteration << ": Resuming simulation after tuning phase.\n";
 
     // reset the forces which accumulated during the tuning phase
-    _autoPasDMContainer->applyToOwnedParticles(
-        [&](auto &particle) { particle.setF(_configuration.globalForce.value); });
+    const auto &properties = *_configuration.getParticlePropertiesLibrary();
+    _autoPasDMContainer->applyToOwnedParticles([&](auto &particle) {
+      particle.setF(_configuration.globalForce.value +
+                    _configuration.gravity.value * properties.getMolMass(particle.getTypeId()));
+    });
 
     // calculate the forces of the latest iteration again
     updateInteractionForces();
