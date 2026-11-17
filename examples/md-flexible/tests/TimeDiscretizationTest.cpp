@@ -496,6 +496,136 @@ TEST_F(TimeDiscretizationTest, testFastParticlesCheck) {
       << "The particle moved farther than the allowed change in position but no exception was thrown.";
 }
 #endif
+/**
+ * Tests position updates and force resetting with mass-scaled gravity and constant global force on particles with
+ * differing masses.
+ */
+TEST_F(TimeDiscretizationTest, testCalculatePositionsWithGravity) {
+  auto autoPas = std::make_shared<autopas::AutoPas<ParticleType>>();
+  autoPas->setBoxMin({0., 0., 0.});
+  autoPas->setBoxMax({10., 10., 10.});
+  autoPas->setCutoff(1.0);
+  autoPas->setVerletSkin(1.0);
+  autoPas->init();
+
+  ParticlePropertiesLibrary<> PPL(1.0);
+#if MD_FLEXIBLE_MODE == MULTISITE
+  PPL.addSiteType(0, 1.0);
+  PPL.addLJParametersToSite(0, 1., 1.);
+  PPL.addSiteType(1, 2.5);
+  PPL.addLJParametersToSite(1, 1., 1.);
+  PPL.addMolType(0, {0}, {{0., 0., 0.}}, {1., 1., 1.});
+  PPL.addMolType(1, {1}, {{0., 0., 0.}}, {1., 1., 1.});
+#else
+  PPL.addSiteType(0, 1.0);
+  PPL.addLJParametersToSite(0, 1., 1.);
+  PPL.addSiteType(1, 2.5);
+  PPL.addLJParametersToSite(1, 1., 1.);
+#endif
+  PPL.calculateMixingCoefficients();
+
+  ParticleType p0;
+  p0.setID(0);
+  p0.setTypeId(0);
+  p0.setR({1., 1., 1.});
+  p0.setV({0., 0., 0.});
+  p0.setF({0., 0., 0.});
+
+  ParticleType p1;
+  p1.setID(1);
+  p1.setTypeId(1);
+  p1.setR({2., 2., 2.});
+  p1.setV({0., 0., 0.});
+  p1.setF({0., 0., 0.});
+
+  autoPas->addParticle(p0);
+  autoPas->addParticle(p1);
+
+  constexpr double deltaT = 0.1;
+  constexpr std::array<double, 3> globalForce = {1.0, 0.0, 0.0};
+  constexpr std::array<double, 3> gravity = {0.0, 0.0, -9.81};
+
+  // Step 1: Initial call resets forces to F_global + m * gravity
+  TimeDiscretization::calculatePositionsAndResetForces(*autoPas, PPL, deltaT, globalForce, gravity, false);
+
+  for (auto iter = autoPas->begin(autopas::IteratorBehavior::owned); iter.isValid(); ++iter) {
+    if (iter->getID() == 0) {
+      // mass = 1.0 -> F = {1.0, 0.0, -9.81}
+      EXPECT_DOUBLE_EQ(iter->getF()[0], 1.0);
+      EXPECT_DOUBLE_EQ(iter->getF()[1], 0.0);
+      EXPECT_DOUBLE_EQ(iter->getF()[2], -9.81);
+    } else if (iter->getID() == 1) {
+      // mass = 2.5 -> F = {1.0, 0.0, -24.525}
+      EXPECT_DOUBLE_EQ(iter->getF()[0], 1.0);
+      EXPECT_DOUBLE_EQ(iter->getF()[1], 0.0);
+      EXPECT_DOUBLE_EQ(iter->getF()[2], -24.525);
+    }
+  }
+
+  // Step 2: Now positions will be updated according to F / (2 * m) * deltaT^2
+  // For gravity (z-axis): displacement = 0.5 * (-9.81) * (0.1)^2 = -0.04905 for BOTH particles
+  // For global force (x-axis): displacement = 1.0 / (2 * m) * (0.1)^2 = 0.005 / m
+  // p0: dx = 0.005 / 1.0 = 0.005
+  // p1: dx = 0.005 / 2.5 = 0.002
+  TimeDiscretization::calculatePositionsAndResetForces(*autoPas, PPL, deltaT, globalForce, gravity, false);
+
+  for (auto iter = autoPas->begin(autopas::IteratorBehavior::owned); iter.isValid(); ++iter) {
+    if (iter->getID() == 0) {
+      EXPECT_DOUBLE_EQ(iter->getR()[0], 1.0 + 0.005);
+      EXPECT_DOUBLE_EQ(iter->getR()[1], 1.0);
+      EXPECT_DOUBLE_EQ(iter->getR()[2], 1.0 - 0.04905);
+    } else if (iter->getID() == 1) {
+      EXPECT_DOUBLE_EQ(iter->getR()[0], 2.0 + 0.002);
+      EXPECT_DOUBLE_EQ(iter->getR()[1], 2.0);
+      EXPECT_DOUBLE_EQ(iter->getR()[2], 2.0 - 0.04905);
+    }
+  }
+}
+
+#if MD_FLEXIBLE_MODE == MULTISITE
+/**
+ * Tests quaternion integration and torque resetting under gravity for multi-site molecules with asymmetric site masses.
+ */
+TEST_F(TimeDiscretizationTest, testCalculateQuaternionWithGravity) {
+  auto autopasContainer = std::make_shared<autopas::AutoPas<ParticleType>>();
+  autopasContainer->setBoxMin({0., 0., 0.});
+  autopasContainer->setBoxMax({10., 10., 10.});
+  autopasContainer->init();
+
+  ParticlePropertiesLibrary<> PPL(1.0);
+  PPL.addSiteType(0, 1.0);
+  PPL.addLJParametersToSite(0, 1., 1.);
+  PPL.addSiteType(1, 3.0);
+  PPL.addLJParametersToSite(1, 1., 1.);
+  PPL.addMolType(0, {0, 1}, {{-1.0, 0., 0.}, {1.0, 0., 0.}}, {1., 1., 1.});
+  PPL.calculateMixingCoefficients();
+
+  ParticleType mol;
+  mol.setR({5., 5., 5.});
+  mol.setQuaternion({1., 0., 0., 0.});
+  mol.setF({0., 0., 0.});
+  mol.setV({0., 0., 0.});
+  mol.setTorque({0., 0., 0.});
+  mol.setAngularVel({0., 0., 0.});
+  mol.setTypeId(0);
+  autopasContainer->addParticle(mol);
+
+  constexpr double deltaT = 0.01;
+  constexpr std::array<double, 3> globalForce = {0., 0., 0.};
+  constexpr std::array<double, 3> gravity = {0., 0., -10.};
+
+  // Torque: site 0 is at {-1, 0, 0} with force {0, 0, -10} -> torque = {0, -10, 0}
+  //         site 1 is at {1, 0, 0} with force {0, 0, -30}  -> torque = {0, 30, 0}
+  // Total torque: {0, 20, 0}
+  TimeDiscretization::calculateQuaternionsAndResetTorques(*autopasContainer, PPL, deltaT, globalForce, gravity);
+
+  auto resultantMol = autopasContainer->begin(autopas::IteratorBehavior::owned);
+  EXPECT_DOUBLE_EQ(resultantMol->getTorque()[0], 0.);
+  EXPECT_DOUBLE_EQ(resultantMol->getTorque()[1], 20.);
+  EXPECT_DOUBLE_EQ(resultantMol->getTorque()[2], 0.);
+}
+#endif
+
 // @todo: move tests to new class SimulationTest.cpp -> Issue #641
 // https://github.com/AutoPas/AutoPas/issues/641
 // @note: since this issue was made, these tests have been converted to templates for either Molecule or
