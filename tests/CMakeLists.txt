@@ -491,3 +491,32 @@ add_autopasdm_mpi_gtest(
     MDTimeDiscretizationTest.CalculatesAngularVelocitiesForDistributedMultisiteMolecules
     2
 )
+
+add_executable(
+    autopasdm_thermostat_distributed_tests
+    ThermostatDistributedTest.cpp
+    MPITestMain.cpp
+)
+
+target_link_libraries(
+    autopasdm_thermostat_distributed_tests
+    PRIVATE
+        autopasdm
+        molecularDynamicsLibrary
+        GTest::gtest
+        MPI::MPI_CXX
+)
+
+target_include_directories(
+    autopasdm_thermostat_distributed_tests
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../examples/md-flexible"
+)
+
+target_compile_features(autopasdm_thermostat_distributed_tests PRIVATE cxx_std_20)
+
+add_autopasdm_mpi_gtest(
+    autopasdm_thermostat_distributed_tests
+    ThermostatDistributedTest.CalculatesAndAppliesGlobalTemperatureAcrossRanks
+    2
+)

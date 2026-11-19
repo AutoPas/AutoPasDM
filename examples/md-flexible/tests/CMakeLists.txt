@@ -22,6 +22,8 @@ list(FILTER MDFlexTest_SRC EXCLUDE REGEX ".*Simulation.((cpp)|h)")
 list(FILTER MDFlexTest_SRC EXCLUDE REGEX ".*ParticleSerializationToolsTest.((cpp)|h)")
 # This regression is built as a separate MPI test below, not as part of the single-process gtest executable.
 list(FILTER MDFlexTest_SRC EXCLUDE REGEX ".*AllLoadBalancerTest.cpp$")
+# These checkpoint regressions require MPI and are registered separately below.
+list(FILTER MDFlexTest_SRC EXCLUDE REGEX ".*DistributedCheckpointTest.cpp$")
 
 add_executable(mdFlexTests ${MDFlexTest_SRC})
 
@@ -113,3 +115,90 @@ gtest_discover_tests(
         PROPERTIES
             ENVIRONMENT "${LSAN_OPTIONS_STR}"
 )
+
+if(MD_FLEXIBLE_USE_MPI)
+    add_executable(
+        autopasdm_checkpoint_tests
+        DistributedCheckpointTest.cpp
+        ../src/ParallelVtkWriter.cpp
+        ../src/configuration/MDFlexConfig.cpp
+        ../src/configuration/MDFlexParser.cpp
+        ../src/configuration/CLIParser.cpp
+        ../src/configuration/YamlParser.cpp
+        ../../../tests/MPITestMain.cpp
+    )
+
+    target_include_directories(
+        autopasdm_checkpoint_tests
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/.."
+            "${PROJECT_SOURCE_DIR}/tests"
+    )
+
+    target_link_libraries(
+        autopasdm_checkpoint_tests
+        PRIVATE
+            autopasdm
+            autopas
+            molecularDynamicsLibrary
+            yaml-cpp
+            GTest::gtest
+            MPI::MPI_CXX
+    )
+
+    target_compile_features(autopasdm_checkpoint_tests PRIVATE cxx_std_20)
+
+    add_test(
+        NAME AutoPasDM/DistributedCheckpointTest.WritesTwoRankVtkCheckpoint
+        COMMAND
+            ${MPIEXEC_EXECUTABLE}
+            ${MPIEXEC_NUMPROC_FLAG} 2
+            ${MPIEXEC_PREFLAGS}
+            $<TARGET_FILE:autopasdm_checkpoint_tests>
+            "--gtest_filter=DistributedCheckpointTest.WritesTwoRankVtkCheckpoint"
+            ${MPIEXEC_POSTFLAGS}
+    )
+    set_tests_properties(
+        AutoPasDM/DistributedCheckpointTest.WritesTwoRankVtkCheckpoint
+        PROPERTIES
+            PROCESSORS 2
+            FIXTURES_SETUP MDFlexCheckpointData
+            LABELS "md-flexible;integration;checkpoint"
+    )
+
+    add_test(
+        NAME AutoPasDM/DistributedCheckpointTest.RestoresCheckpointWithSameRankCount
+        COMMAND
+            ${MPIEXEC_EXECUTABLE}
+            ${MPIEXEC_NUMPROC_FLAG} 2
+            ${MPIEXEC_PREFLAGS}
+            $<TARGET_FILE:autopasdm_checkpoint_tests>
+            "--gtest_filter=DistributedCheckpointTest.RestoresCheckpointWithSameRankCount"
+            ${MPIEXEC_POSTFLAGS}
+    )
+    set_tests_properties(
+        AutoPasDM/DistributedCheckpointTest.RestoresCheckpointWithSameRankCount
+        PROPERTIES
+            PROCESSORS 2
+            FIXTURES_REQUIRED MDFlexCheckpointData
+            LABELS "md-flexible;integration;checkpoint"
+    )
+
+    add_test(
+        NAME AutoPasDM/DistributedCheckpointTest.RestoresAndRedistributesCheckpointWithDifferentRankCount
+        COMMAND
+            ${MPIEXEC_EXECUTABLE}
+            ${MPIEXEC_NUMPROC_FLAG} 1
+            ${MPIEXEC_PREFLAGS}
+            $<TARGET_FILE:autopasdm_checkpoint_tests>
+            "--gtest_filter=DistributedCheckpointTest.RestoresAndRedistributesCheckpointWithDifferentRankCount"
+            ${MPIEXEC_POSTFLAGS}
+    )
+    set_tests_properties(
+        AutoPasDM/DistributedCheckpointTest.RestoresAndRedistributesCheckpointWithDifferentRankCount
+        PROPERTIES
+            PROCESSORS 1
+            FIXTURES_REQUIRED MDFlexCheckpointData
+            LABELS "md-flexible;integration;checkpoint"
+    )
+endif()

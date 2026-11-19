@@ -38,10 +38,13 @@ bool updatePositionAndResetForces(ParticleType &particle,
   if (not particle.addRDistanceCheck(displacement, maxAllowedDistanceMovedSquared) and
       maxAllowedDistanceMovedSquared > 0) {
     const auto distanceMoved = std::sqrt(dot(displacement, displacement));
-    AUTOPAS_OPENMP(critical)
-    std::cerr << "A particle moved farther than verletSkinPerTimestep/2: " << distanceMoved << " > "
-              << maxAllowedDistanceMoved << "\n"
-              << particle << "\nNew Position: " << particle.getR() + displacement << std::endl;
+    AUTOPAS_OPENMP(critical) {
+      const auto newPosition = particle.getR() + displacement;
+      std::cerr << "A particle moved farther than verletSkinPerTimestep/2: " << distanceMoved << " > "
+                << maxAllowedDistanceMoved << "\n"
+                << particle << "\nNew Position: [" << newPosition[0] << ", " << newPosition[1] << ", " << newPosition[2]
+                << "]" << std::endl;
+    }
     return true;
   }
 

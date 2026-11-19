@@ -56,6 +56,23 @@ target_compile_definitions(
         $<$<BOOL:${MD_FLEXIBLE_CALC_GLOBALS}>:MD_FLEXIBLE_CALC_GLOBALS>
 )
 
+# Keep upstream's build-time notice for functors that are unavailable in multisite mode.
+string(TOLOWER "${MD_FLEXIBLE_MODE}" MD_FLEXIBLE_MODE_lower)
+if(MD_FLEXIBLE_MODE_lower MATCHES "multisite")
+    if(MD_FLEXIBLE_FUNCTOR_AVX)
+        message(WARNING "AVX Lennard-Jones functor has not been implemented for Multi-Site Molecules")
+    endif()
+    if(MD_FLEXIBLE_FUNCTOR_SVE)
+        message(WARNING "SVE Lennard-Jones functor has not been implemented for Multi-Site Molecules")
+    endif()
+    if(MD_FLEXIBLE_FUNCTOR_ATM_AUTOVEC)
+        message(WARNING "Axilrod-Teller-Muto functor has not been implemented for Multi-Site Molecules")
+    endif()
+    if(MD_FLEXIBLE_FUNCTOR_HWY)
+        message(WARNING "Highway functor has not been implemented for Multi-Site Molecules")
+    endif()
+endif()
+
 # Copy input and helper files next to the executable as in the original
 # md-flexible build.
 file(
@@ -94,7 +111,33 @@ if(AUTOPASDM_BUILD_TESTS)
     add_subdirectory(tests)
 
     set(MDFLEX_TEST_FUNCTOR "Lennard-Jones")
+
+    # The AVX functor needs both an AVX-enabled md-flexible build and an AutoPas
+    # vectorization configuration that can run the corresponding traversals.
+    set(HAS_AVX false)
     if(MD_FLEXIBLE_FUNCTOR_AVX AND MD_FLEXIBLE_MODE STREQUAL "SINGLESITE")
+        if(NOT AUTOPAS_USE_AUTOVEC)
+            message(STATUS "No AutoPas vectorization used; not adding md-flexible AVX tests.")
+        elseif(AUTOPAS_VECTOR_INSTRUCTIONS MATCHES "SSE")
+            message(STATUS "Only SSE specified; not adding md-flexible AVX tests.")
+        elseif(AUTOPAS_VECTOR_INSTRUCTIONS MATCHES "SVE")
+            message(STATUS "SVE vectorization level; not adding md-flexible AVX tests.")
+        elseif(AUTOPAS_VECTOR_INSTRUCTIONS MATCHES "NATIVE")
+            message(STATUS "Native vectorization level; detecting AVX capability.")
+            try_compile(
+                HAS_AVX
+                "${CMAKE_BINARY_DIR}"
+                "${AUTOPAS_SOURCE_DIR}/cmake/tests/has_avx_test.cpp"
+                COMPILE_DEFINITIONS "-march=native"
+                OUTPUT_VARIABLE HAS_AVX_ERROR
+            )
+        else()
+            message(STATUS "Adding md-flexible AVX tests for the selected vectorization level.")
+            set(HAS_AVX true)
+        endif()
+    endif()
+
+    if(HAS_AVX)
         set(MDFLEX_TEST_FUNCTOR "Lennard-Jones-AVX")
     endif()
 
@@ -144,6 +187,26 @@ if(AUTOPASDM_BUILD_TESTS)
     )
     set_tests_properties(md-flexible.test-sim PROPERTIES LABELS "md-flexible;integration")
 
+    # Keep the upstream lightweight performance smoke test when its Highway
+    # single-site functor is available.
+    if(MD_FLEXIBLE_MODE STREQUAL "SINGLESITE" AND MD_FLEXIBLE_FUNCTOR_HWY)
+        add_test(
+            NAME md-flexMeasurePerf
+            COMMAND
+                bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/measurePerf.sh"
+                "$<TARGET_FILE:md-flexible>"
+                -silent
+            CONFIGURATIONS checkExamples
+        )
+        set_tests_properties(
+            md-flexMeasurePerf
+            PROPERTIES
+                WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+                LABELS "md-flexible;performance"
+                ENVIRONMENT "${LSAN_OPTIONS_STR}"
+        )
+    endif()
+
     # Exercise the complete YAML -> Simulation -> AutoPasDM ALL/TENSOR path on two ranks.
     if(MD_FLEXIBLE_ENABLE_ALLLBL AND MD_FLEXIBLE_USE_MPI)
         add_test(
@@ -189,7 +252,92 @@ if(AUTOPASDM_BUILD_TESTS)
         )
     endif()
 
-    if(MD_FLEXIBLE_FUNCTOR_AVX AND MD_FLEXIBLE_MODE STREQUAL "SINGLESITE")
+    # Exercise the full CLI checkpoint path: one run writes a two-rank VTK checkpoint,
+    # and a second run restores it while using a deliberately different input particle count.
+    if(MD_FLEXIBLE_USE_MPI)
+        set(MDFLEX_CHECKPOINT_TEST_OUTPUT_FOLDER "autopasdm-cli-checkpoint-output")
+        set(MDFLEX_CHECKPOINT_TEST_FILE
+            "${CMAKE_CURRENT_BINARY_DIR}/${MDFLEX_CHECKPOINT_TEST_OUTPUT_FOLDER}/autopasdm-cli-checkpoint/autopasdm-cli-checkpoint_Particles_1.pvtu"
+        )
+
+        add_test(
+            NAME md-flexible.test-checkpoint-cli-write
+            COMMAND
+                ${MPIEXEC_EXECUTABLE}
+                ${MPIEXEC_NUMPROC_FLAG} 2
+                ${MPIEXEC_PREFLAGS}
+                $<TARGET_FILE:md-flexible>
+                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/input/autopasdm_cli_checkpoint.yaml"
+                --vtk-filename autopasdm-cli-checkpoint
+                --vtk-output-folder "${MDFLEX_CHECKPOINT_TEST_OUTPUT_FOLDER}"
+                --vtk-write-frequency 1
+                ${MPIEXEC_POSTFLAGS}
+            CONFIGURATIONS checkExamples
+        )
+        set_tests_properties(
+            md-flexible.test-checkpoint-cli-write
+            PROPERTIES
+                PROCESSORS 2
+                WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+                FIXTURES_SETUP MDFlexCLICheckpoint
+                LABELS "md-flexible;integration;checkpoint;cli"
+                PASS_REGULAR_EXPRESSION "Owned: 8"
+        )
+
+        add_test(
+            NAME md-flexible.test-checkpoint-cli-restart
+            COMMAND
+                ${MPIEXEC_EXECUTABLE}
+                ${MPIEXEC_NUMPROC_FLAG} 2
+                ${MPIEXEC_PREFLAGS}
+                $<TARGET_FILE:md-flexible>
+                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/input/autopasdm_cli_checkpoint_restart.yaml"
+                --checkpoint "${MDFLEX_CHECKPOINT_TEST_FILE}"
+                --vtk-filename autopasdm-cli-checkpoint-restart
+                --vtk-output-folder "${MDFLEX_CHECKPOINT_TEST_OUTPUT_FOLDER}"
+                --vtk-write-frequency 1
+                ${MPIEXEC_POSTFLAGS}
+            CONFIGURATIONS checkExamples
+        )
+        set_tests_properties(
+            md-flexible.test-checkpoint-cli-restart
+            PROPERTIES
+                PROCESSORS 2
+                WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+                FIXTURES_REQUIRED MDFlexCLICheckpoint
+                LABELS "md-flexible;integration;checkpoint;cli"
+                PASS_REGULAR_EXPRESSION "Owned: 8"
+        )
+    endif()
+
+    if(MD_FLEXIBLE_USE_MPI)
+        add_test(
+            NAME md-flexible.test-checkpoint-cli-restart-different-rank-count
+            COMMAND
+                ${MPIEXEC_EXECUTABLE}
+                ${MPIEXEC_NUMPROC_FLAG} 1
+                ${MPIEXEC_PREFLAGS}
+                $<TARGET_FILE:md-flexible>
+                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/input/autopasdm_cli_checkpoint_restart.yaml"
+                --checkpoint "${MDFLEX_CHECKPOINT_TEST_FILE}"
+                --vtk-filename autopasdm-cli-checkpoint-restart-one-rank
+                --vtk-output-folder "${MDFLEX_CHECKPOINT_TEST_OUTPUT_FOLDER}"
+                --vtk-write-frequency 1
+                ${MPIEXEC_POSTFLAGS}
+            CONFIGURATIONS checkExamples
+        )
+        set_tests_properties(
+            md-flexible.test-checkpoint-cli-restart-different-rank-count
+            PROPERTIES
+                PROCESSORS 1
+                WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+                FIXTURES_REQUIRED MDFlexCLICheckpoint
+                LABELS "md-flexible;integration;checkpoint;cli"
+                PASS_REGULAR_EXPRESSION "Owned: 8"
+        )
+    endif()
+
+    if(HAS_AVX)
         add_test(
             NAME md-flexible-avx.test-unaligned
             COMMAND md-flexible
@@ -206,4 +354,10 @@ if(AUTOPASDM_BUILD_TESTS)
         )
         set_tests_properties(md-flexible-avx.test-unaligned PROPERTIES LABELS "md-flexible;integration")
     endif()
+endif()
+
+# In a larger AutoPas build this target collects example tests;
+# standalone AutoPasDM builds do not necessarily define it.
+if(TARGET checkExamples)
+    add_dependencies(checkExamples md-flexible)
 endif()
