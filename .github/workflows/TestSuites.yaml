@@ -3,68 +3,194 @@ name: TestSuites
 on:
   push:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  tests:
-    name: Tests (${{ matrix.mode }})
+  setup:
+    name: Set up CI matrix
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - mode: SINGLESITE
-            hwy: "ON"
-          - mode: MULTISITE
-            hwy: "OFF"
-    env:
-      OMPI_MCA_rmaps_base_oversubscribe: "1"
+    outputs:
+      config: ${{ steps.matrix.outputs.config }}
+      autopas_ref: ${{ steps.autopas_ref.outputs.ref }}
     steps:
-      - name: Check out AutoPasDM
-        uses: actions/checkout@v4
-        with:
-          path: AutoPasDM
-
-      - name: Check out the tested AutoPas version
+      - name: Check out current AutoPas master
         uses: actions/checkout@v4
         with:
           repository: AutoPas/AutoPas
           ref: master
           path: AutoPas
 
+      - name: Resolve AutoPas revision
+        id: autopas_ref
+        run: echo "ref=$(git -C AutoPas rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Select build matrix
+        id: matrix
+        shell: bash
+        run: |
+          read -r -d '' full_matrix <<'JSON' || true
+          [
+            {"name":"GCC-Release-OMP-SingleSite","cc":"gcc","cxx":"g++","build_type":"Release","omp":"ON","asan":"OFF","tsan":"OFF","site":"SINGLESITE","autovec":"ON","avx":"OFF","hwy":"ON","test_scope":"full"},
+            {"name":"Clang-Release-ASan-SingleSite","cc":"clang","cxx":"clang++","build_type":"Release","omp":"OFF","asan":"ON","tsan":"OFF","site":"SINGLESITE","autovec":"ON","avx":"OFF","hwy":"ON","test_scope":"full"},
+            {"name":"Clang-Release-OMP-TSan-SingleSite","cc":"clang","cxx":"clang++","build_type":"Release","omp":"ON","asan":"OFF","tsan":"ON","site":"SINGLESITE","autovec":"ON","avx":"OFF","hwy":"OFF","test_scope":"tsan-unit"},
+            {"name":"GCC-Release-OMP-MultiSite","cc":"gcc","cxx":"g++","build_type":"Release","omp":"ON","asan":"OFF","tsan":"OFF","site":"MULTISITE","autovec":"ON","avx":"OFF","hwy":"OFF","test_scope":"full"},
+            {"name":"Clang-Release-ASan-MultiSite","cc":"clang","cxx":"clang++","build_type":"Release","omp":"OFF","asan":"ON","tsan":"OFF","site":"MULTISITE","autovec":"ON","avx":"OFF","hwy":"OFF","test_scope":"full"},
+            {"name":"Clang-Debug-CompileOnly-SingleSite","cc":"clang","cxx":"clang++","build_type":"Debug","omp":"ON","asan":"OFF","tsan":"OFF","site":"SINGLESITE","autovec":"ON","avx":"OFF","hwy":"ON","test_scope":"compile-only"}
+          ]
+          JSON
+
+          read -r -d '' light_matrix <<'JSON' || true
+          [
+            {"name":"GCC-Release-OMP-SingleSite","cc":"gcc","cxx":"g++","build_type":"Release","omp":"ON","asan":"OFF","tsan":"OFF","site":"SINGLESITE","autovec":"ON","avx":"OFF","hwy":"ON","test_scope":"full"}
+          ]
+          JSON
+
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.pull_request.draft }}" == "true" ]]; then
+            echo "Draft pull request: using the light matrix."
+            matrix_json="$light_matrix"
+          else
+            echo "Using the full matrix."
+            matrix_json="$full_matrix"
+          fi
+
+          echo "config=$(jq -c . <<< "$matrix_json")" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.config.name }}
+    needs: setup
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJson(needs.setup.outputs.config) }}
+    steps:
+      - name: Check out AutoPasDM
+        uses: actions/checkout@v4
+        with:
+          path: AutoPasDM
+
+      - name: Check out matching AutoPas revision
+        uses: actions/checkout@v4
+        with:
+          repository: AutoPas/AutoPas
+          ref: ${{ needs.setup.outputs.autopas_ref }}
+          path: AutoPas
+
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential cmake libopenmpi-dev openmpi-bin
+          sudo apt-get install --yes build-essential clang cmake libomp-dev libopenmpi-dev ninja-build openmpi-bin
 
       - name: Configure
         run: >-
-          cmake -S AutoPasDM -B AutoPasDM/build-ci
+          CC=${{ matrix.config.cc }} CXX=${{ matrix.config.cxx }}
+          cmake -S AutoPasDM -B AutoPasDM/build-ci -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }}
           -DAUTOPAS_SOURCE_DIR="${GITHUB_WORKSPACE}/AutoPas"
           -DAUTOPASDM_BUILD_EXAMPLES=ON
           -DAUTOPASDM_BUILD_TESTS=ON
+          -DAUTOPAS_OPENMP=${{ matrix.config.omp }}
+          -DAUTOPAS_ENABLE_ADDRESS_SANITIZER=${{ matrix.config.asan }}
+          -DAUTOPAS_ENABLE_THREAD_SANITIZER=${{ matrix.config.tsan }}
           -DAUTOPAS_INTERNODE_TUNING=ON
-          -DMD_FLEXIBLE_MODE=${{ matrix.mode }}
-          -DMD_FLEXIBLE_FUNCTOR_AUTOVEC=ON
-          -DMD_FLEXIBLE_FUNCTOR_HWY=${{ matrix.hwy }}
+          -DAUTOPAS_USE_AUTOVEC=OFF
+          -DMD_FLEXIBLE_MODE=${{ matrix.config.site }}
+          -DMD_FLEXIBLE_FUNCTOR_AUTOVEC=${{ matrix.config.autovec }}
+          -DMD_FLEXIBLE_FUNCTOR_AVX=${{ matrix.config.avx }}
+          -DMD_FLEXIBLE_FUNCTOR_HWY=${{ matrix.config.hwy }}
+          -DMD_FLEXIBLE_FUNCTOR_SVE=OFF
           -DMD_FLEXIBLE_USE_MPI=ON
+          -DMD_FLEXIBLE_ENABLE_ALLLBL=OFF
 
       - name: Build
         run: cmake --build AutoPasDM/build-ci --parallel 2
 
-      - name: Run all tests (single-site)
-        if: matrix.mode == 'SINGLESITE'
-        run: ctest --test-dir AutoPasDM/build-ci -C checkExamples --output-on-failure
+      - name: Archive build folder
+        run: tar -czf build-ci.tar.gz -C AutoPasDM build-ci
 
-      - name: Run tests (multi-site)
-        if: matrix.mode == 'MULTISITE'
+      - name: Upload build folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.config.name }}
+          path: build-ci.tar.gz
+          retention-days: 1
+
+  tests:
+    name: Tests ${{ matrix.config.name }} (${{ matrix.part }}/4)
+    needs: [setup, build]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJson(needs.setup.outputs.config) }}
+        part: [1, 2, 3, 4]
+        exclude:
+          - config: {"test_scope":"compile-only"}
+          - config: {"test_scope":"tsan-unit"}
+            part: 2
+          - config: {"test_scope":"tsan-unit"}
+            part: 3
+          - config: {"test_scope":"tsan-unit"}
+            part: 4
+    env:
+      OMPI_MCA_rmaps_base_oversubscribe: "1"
+      TSAN_OPTIONS: ignore_noninstrumented_modules=1
+    steps:
+      - name: Check out AutoPasDM
+        uses: actions/checkout@v4
+        with:
+          path: AutoPasDM
+
+      - name: Check out matching AutoPas revision
+        uses: actions/checkout@v4
+        with:
+          repository: AutoPas/AutoPas
+          ref: ${{ needs.setup.outputs.autopas_ref }}
+          path: AutoPas
+
+      - name: Install MPI runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libopenmpi-dev openmpi-bin
+
+      - name: Download build folder
+        uses: actions/download-artifact@v4
+        with:
+          name: build-${{ matrix.config.name }}
+          path: .
+
+      - name: Extract build folder
+        run: tar -xzf build-ci.tar.gz -C AutoPasDM
+
+      - name: Run test part (full suite)
+        if: matrix.config.test_scope == 'full'
+        run: |
+          if [[ "${{ matrix.config.asan }}" == "ON" ]]; then
+            export LSAN_OPTIONS="suppressions=${GITHUB_WORKSPACE}/AutoPas/.lsanIgnoreList.txt:ignore_noninstrumented_modules=1"
+          fi
+          if [[ "${{ matrix.config.site }}" == "MULTISITE" ]]; then
+            ctest --test-dir AutoPasDM/build-ci -C checkExamples \
+              -I ${{ matrix.part }},,4 --output-on-failure \
+              -E '^md-flexible\.test-(sim|static)$'
+          else
+            ctest --test-dir AutoPasDM/build-ci -C checkExamples \
+              -I ${{ matrix.part }},,4 --output-on-failure
+          fi
+
+      - name: Run non-MPI tests with ThreadSanitizer
+        if: matrix.config.test_scope == 'tsan-unit'
         run: >-
           ctest --test-dir AutoPasDM/build-ci -C checkExamples
           --output-on-failure
-          -E '^md-flexible\.test-(sim|static)$'
+          -R '^AutoPasDM/(DomainDecompositionTest|PerformanceCountersTest|InvertedPressureTest|ReflectiveBoundaryTest|MultisiteReflectiveBoundaryTest|MoleculeLJParticleSerializerTest|mdFlex/)'
 
   style:
     name: Style check
