@@ -106,6 +106,10 @@ endif ()
 
 # this cmake module was only introduced in 3.10
 include(GoogleTest)
+set(_mdflex_test_environment "${LSAN_OPTIONS_STR}")
+if(AUTOPAS_ENABLE_ADDRESS_SANITIZER)
+    list(APPEND _mdflex_test_environment "ASAN_OPTIONS=detect_leaks=0")
+endif()
 # more robust, queries the compiled executable
 gtest_discover_tests(
         mdFlexTests TEST_PREFIX "AutoPasDM/mdFlex/"
@@ -113,7 +117,7 @@ gtest_discover_tests(
         # This prevents SIGPIPE errors in CI when sanitizers are enabled
         DISCOVERY_MODE PRE_TEST
         PROPERTIES
-            ENVIRONMENT "${LSAN_OPTIONS_STR}"
+            ENVIRONMENT "${_mdflex_test_environment}"
 )
 
 if(MD_FLEXIBLE_USE_MPI)
@@ -165,6 +169,7 @@ if(MD_FLEXIBLE_USE_MPI)
             FIXTURES_SETUP MDFlexCheckpointData
             LABELS "md-flexible;integration;checkpoint"
     )
+    autopasdm_disable_lsan_for_mpi_test(AutoPasDM/DistributedCheckpointTest.WritesTwoRankVtkCheckpoint)
 
     add_test(
         NAME AutoPasDM/DistributedCheckpointTest.RestoresCheckpointWithSameRankCount
@@ -183,6 +188,7 @@ if(MD_FLEXIBLE_USE_MPI)
             FIXTURES_REQUIRED MDFlexCheckpointData
             LABELS "md-flexible;integration;checkpoint"
     )
+    autopasdm_disable_lsan_for_mpi_test(AutoPasDM/DistributedCheckpointTest.RestoresCheckpointWithSameRankCount)
 
     add_test(
         NAME AutoPasDM/DistributedCheckpointTest.RestoresAndRedistributesCheckpointWithDifferentRankCount
@@ -200,5 +206,8 @@ if(MD_FLEXIBLE_USE_MPI)
             PROCESSORS 1
             FIXTURES_REQUIRED MDFlexCheckpointData
             LABELS "md-flexible;integration;checkpoint"
+    )
+    autopasdm_disable_lsan_for_mpi_test(
+        AutoPasDM/DistributedCheckpointTest.RestoresAndRedistributesCheckpointWithDifferentRankCount
     )
 endif()

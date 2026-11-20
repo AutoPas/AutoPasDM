@@ -160,6 +160,15 @@ if(AUTOPASDM_BUILD_TESTS)
         message(FATAL_ERROR "md-flexible tests require GoogleTest's GMock target.")
     endif()
 
+    # OpenMPI/PMIx and libevent leave small process-global allocations behind that LeakSanitizer
+    # reports after MPI_Finalize(). Keep AddressSanitizer enabled for MPI tests, but disable its
+    # leak check for those tests. Non-MPI tests continue to run with LeakSanitizer enabled.
+    function(autopasdm_disable_lsan_for_mpi_test test_name)
+        if(AUTOPAS_ENABLE_ADDRESS_SANITIZER)
+            set_property(TEST "${test_name}" APPEND PROPERTY ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+        endif()
+    endfunction()
+
     add_subdirectory(tests)
 endif()
 

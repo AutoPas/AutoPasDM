@@ -43,6 +43,7 @@ function(add_autopasdm_mpi_gtest target test_name number_of_ranks)
             ${MPIEXEC_POSTFLAGS}
     )
     set_tests_properties("AutoPasDM/${test_name}" PROPERTIES PROCESSORS ${number_of_ranks})
+    autopasdm_disable_lsan_for_mpi_test("AutoPasDM/${test_name}")
 endfunction()
 
 add_executable(

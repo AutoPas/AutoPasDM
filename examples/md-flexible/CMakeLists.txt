@@ -164,6 +164,9 @@ if(AUTOPASDM_BUILD_TESTS)
         CONFIGURATIONS checkExamples
     )
     set_tests_properties(md-flexible.test-static PROPERTIES LABELS "md-flexible;integration")
+    if(MD_FLEXIBLE_USE_MPI)
+        autopasdm_disable_lsan_for_mpi_test(md-flexible.test-static)
+    endif()
 
     add_test(
         NAME md-flexible.test-sim
@@ -186,6 +189,9 @@ if(AUTOPASDM_BUILD_TESTS)
         CONFIGURATIONS checkExamples
     )
     set_tests_properties(md-flexible.test-sim PROPERTIES LABELS "md-flexible;integration")
+    if(MD_FLEXIBLE_USE_MPI)
+        autopasdm_disable_lsan_for_mpi_test(md-flexible.test-sim)
+    endif()
 
     # Keep the upstream lightweight performance smoke test when its Highway
     # single-site functor is available.
@@ -205,6 +211,9 @@ if(AUTOPASDM_BUILD_TESTS)
                 LABELS "md-flexible;performance"
                 ENVIRONMENT "${LSAN_OPTIONS_STR}"
         )
+        if(MD_FLEXIBLE_USE_MPI)
+            autopasdm_disable_lsan_for_mpi_test(md-flexMeasurePerf)
+        endif()
     endif()
 
     # Exercise the complete YAML -> Simulation -> AutoPasDM ALL/TENSOR path on two ranks.
@@ -227,6 +236,7 @@ if(AUTOPASDM_BUILD_TESTS)
                 LABELS "md-flexible;integration;load-balancing"
                 PASS_REGULAR_EXPRESSION "Owned: 126"
         )
+        autopasdm_disable_lsan_for_mpi_test(md-flexible.test-all-load-balancer)
     endif()
 
     # Exercise AutoPas' MPI divide-and-conquer tuner through the AutoPasDM
@@ -250,6 +260,7 @@ if(AUTOPASDM_BUILD_TESTS)
                 LABELS "md-flexible;integration;tuning"
                 PASS_REGULAR_EXPRESSION "Owned: 64"
         )
+        autopasdm_disable_lsan_for_mpi_test(md-flexible.test-mpi-tuning)
     endif()
 
     # Exercise the full CLI checkpoint path: one run writes a two-rank VTK checkpoint,
@@ -283,6 +294,7 @@ if(AUTOPASDM_BUILD_TESTS)
                 LABELS "md-flexible;integration;checkpoint;cli"
                 PASS_REGULAR_EXPRESSION "Owned: 8"
         )
+        autopasdm_disable_lsan_for_mpi_test(md-flexible.test-checkpoint-cli-write)
 
         add_test(
             NAME md-flexible.test-checkpoint-cli-restart
@@ -308,6 +320,7 @@ if(AUTOPASDM_BUILD_TESTS)
                 LABELS "md-flexible;integration;checkpoint;cli"
                 PASS_REGULAR_EXPRESSION "Owned: 8"
         )
+        autopasdm_disable_lsan_for_mpi_test(md-flexible.test-checkpoint-cli-restart)
     endif()
 
     if(MD_FLEXIBLE_USE_MPI)
@@ -335,6 +348,7 @@ if(AUTOPASDM_BUILD_TESTS)
                 LABELS "md-flexible;integration;checkpoint;cli"
                 PASS_REGULAR_EXPRESSION "Owned: 8"
         )
+        autopasdm_disable_lsan_for_mpi_test(md-flexible.test-checkpoint-cli-restart-different-rank-count)
     endif()
 
     if(HAS_AVX)
@@ -353,6 +367,9 @@ if(AUTOPASDM_BUILD_TESTS)
                 CONFIGURATIONS checkExamples
         )
         set_tests_properties(md-flexible-avx.test-unaligned PROPERTIES LABELS "md-flexible;integration")
+        if(MD_FLEXIBLE_USE_MPI)
+            autopasdm_disable_lsan_for_mpi_test(md-flexible-avx.test-unaligned)
+        endif()
     endif()
 endif()
 
