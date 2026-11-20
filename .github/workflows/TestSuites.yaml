@@ -63,14 +63,17 @@ jobs:
 
           echo "config=$(jq -c . <<< "$matrix_json")" >> "$GITHUB_OUTPUT"
 
-  build:
-    name: Build ${{ matrix.config.name }}
+  build-and-test:
+    name: Build and test ${{ matrix.config.name }}
     needs: setup
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         config: ${{ fromJson(needs.setup.outputs.config) }}
+    env:
+      OMPI_MCA_rmaps_base_oversubscribe: "1"
+      TSAN_OPTIONS: ignore_noninstrumented_modules=1
     steps:
       - name: Check out AutoPasDM
         uses: actions/checkout@v4
@@ -113,77 +116,25 @@ jobs:
       - name: Build
         run: cmake --build AutoPasDM/build-ci --parallel 2
 
-      - name: Archive build folder
-        run: tar -czf build-ci.tar.gz -C AutoPasDM build-ci
-
-      - name: Upload build folder
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.config.name }}
-          path: build-ci.tar.gz
-          retention-days: 1
-
-  tests:
-    name: Tests ${{ matrix.config.name }} (${{ matrix.part }}/4)
-    needs: [setup, build]
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        config: ${{ fromJson(needs.setup.outputs.config) }}
-        part: [1, 2, 3, 4]
-        exclude:
-          - config: {"test_scope":"compile-only"}
-          - config: {"test_scope":"tsan-unit"}
-            part: 2
-          - config: {"test_scope":"tsan-unit"}
-            part: 3
-          - config: {"test_scope":"tsan-unit"}
-            part: 4
-    env:
-      OMPI_MCA_rmaps_base_oversubscribe: "1"
-      TSAN_OPTIONS: ignore_noninstrumented_modules=1
-    steps:
-      - name: Check out AutoPasDM
-        uses: actions/checkout@v4
-        with:
-          path: AutoPasDM
-
-      - name: Check out matching AutoPas revision
-        uses: actions/checkout@v4
-        with:
-          repository: AutoPas/AutoPas
-          ref: ${{ needs.setup.outputs.autopas_ref }}
-          path: AutoPas
-
-      - name: Install MPI runtime
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libopenmpi-dev openmpi-bin
-
-      - name: Download build folder
-        uses: actions/download-artifact@v4
-        with:
-          name: build-${{ matrix.config.name }}
-          path: .
-
-      - name: Extract build folder
-        run: tar -xzf build-ci.tar.gz -C AutoPasDM
-
       - name: Run test part (full suite)
         if: matrix.config.test_scope == 'full'
         run: |
+          status=0
           if [[ "${{ matrix.config.asan }}" == "ON" ]]; then
             export LSAN_OPTIONS="suppressions=${GITHUB_WORKSPACE}/AutoPas/.lsanIgnoreList.txt:ignore_noninstrumented_modules=1"
           fi
-          if [[ "${{ matrix.config.site }}" == "MULTISITE" ]]; then
-            ctest --test-dir AutoPasDM/build-ci -C checkExamples \
-              -I ${{ matrix.part }},,4 --output-on-failure \
-              -E '^md-flexible\.test-(sim|static)$'
-          else
-            ctest --test-dir AutoPasDM/build-ci -C checkExamples \
-              -I ${{ matrix.part }},,4 --output-on-failure
-          fi
+          for part in 1 2 3 4; do
+            echo "Running CTest part ${part}/4"
+            if [[ "${{ matrix.config.site }}" == "MULTISITE" ]]; then
+              ctest --test-dir AutoPasDM/build-ci -C checkExamples \
+                -I "${part},,4" --output-on-failure \
+                -E '^md-flexible\.test-(sim|static)$' || status=1
+            else
+              ctest --test-dir AutoPasDM/build-ci -C checkExamples \
+                -I "${part},,4" --output-on-failure || status=1
+            fi
+          done
+          exit "$status"
 
       - name: Run non-MPI tests with ThreadSanitizer
         if: matrix.config.test_scope == 'tsan-unit'
