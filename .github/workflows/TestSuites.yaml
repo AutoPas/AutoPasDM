@@ -15,7 +15,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [SINGLESITE, MULTISITE]
+        include:
+          - mode: SINGLESITE
+            hwy: "ON"
+          - mode: MULTISITE
+            hwy: "OFF"
     env:
       OMPI_MCA_rmaps_base_oversubscribe: "1"
     steps:
@@ -44,6 +48,8 @@ jobs:
           -DAUTOPASDM_BUILD_TESTS=ON
           -DAUTOPAS_INTERNODE_TUNING=ON
           -DMD_FLEXIBLE_MODE=${{ matrix.mode }}
+          -DMD_FLEXIBLE_FUNCTOR_AUTOVEC=ON
+          -DMD_FLEXIBLE_FUNCTOR_HWY=${{ matrix.hwy }}
           -DMD_FLEXIBLE_USE_MPI=ON
 
       - name: Build
