@@ -3,6 +3,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <type_traits>
 #include <vector>
 
 #include "autopas/utils/ArrayMath.h"
@@ -75,6 +76,18 @@ void addMirrorForce(Particle &particle, const std::array<double, 3> &position, s
   particle.addF(calculateMirrorForce(position, dimension, boundaryPosition, sigmaSquared, epsilon24));
 }
 
+template <class Particle, class ParticlePropertiesLibrary>
+concept SupportsMultisiteWall = requires(Particle &particle, ParticlePropertiesLibrary &particlePropertiesLibrary) {
+  particle.getQuaternion();
+  particle.getTorque();
+  particle.addTorque(std::array<double, 3>{});
+  particle.setF(particle.getF());
+  particle.setTorque(particle.getTorque());
+  particlePropertiesLibrary.getSitePositions(particle.getTypeId());
+  particlePropertiesLibrary.getSiteTypes(particle.getTypeId());
+  particlePropertiesLibrary.getMoleculesLargestSigma(particle.getTypeId());
+};
+
 }  // namespace detail
 
 /**
@@ -114,12 +127,7 @@ void apply(Container &container, ParticlePropertiesLibrary &particlePropertiesLi
     container.applyToOwnedParticlesInRegion(regionMin, regionMax, [&](auto &particle) {
       const auto moleculeType = particle.getTypeId();
 
-      if constexpr (requires {
-                      particle.getQuaternion();
-                      particle.addTorque(std::array<double, 3>{});
-                      particlePropertiesLibrary.getSitePositions(moleculeType);
-                      particlePropertiesLibrary.getSiteTypes(moleculeType);
-                    }) {
+      if constexpr (detail::SupportsMultisiteWall<std::remove_cvref_t<decltype(particle)>, ParticlePropertiesLibrary>) {
         const auto currentForce = particle.getF();
         const auto currentTorque = particle.getTorque();
         const auto sitePositions = particlePropertiesLibrary.getSitePositions(moleculeType);
