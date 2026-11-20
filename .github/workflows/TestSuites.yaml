@@ -125,25 +125,19 @@ jobs:
       - name: Build
         run: cmake --build AutoPasDM/build-ci --parallel 2
 
-      - name: Run test part (full suite)
+      - name: Run full CTest suite
         if: matrix.config.test_scope == 'full'
         run: |
-          status=0
           if [[ "${{ matrix.config.asan }}" == "ON" ]]; then
             export LSAN_OPTIONS="suppressions=${GITHUB_WORKSPACE}/AutoPas/.lsanIgnoreList.txt:ignore_noninstrumented_modules=1"
           fi
-          for part in 1 2 3 4; do
-            echo "Running CTest part ${part}/4"
-            if [[ "${{ matrix.config.site }}" == "MULTISITE" ]]; then
-              ctest --test-dir AutoPasDM/build-ci -C checkExamples \
-                -I "${part},,4" --output-on-failure \
-                -E '^md-flexible\.test-(sim|static)$' || status=1
-            else
-              ctest --test-dir AutoPasDM/build-ci -C checkExamples \
-                -I "${part},,4" --output-on-failure || status=1
-            fi
-          done
-          exit "$status"
+          if [[ "${{ matrix.config.site }}" == "MULTISITE" ]]; then
+            ctest --test-dir AutoPasDM/build-ci -C checkExamples \
+              --output-on-failure \
+              -E '^md-flexible\.test-(sim|static)$'
+          else
+            ctest --test-dir AutoPasDM/build-ci -C checkExamples --output-on-failure
+          fi
 
       - name: Run non-MPI tests with ThreadSanitizer
         if: matrix.config.test_scope == 'tsan-unit'
