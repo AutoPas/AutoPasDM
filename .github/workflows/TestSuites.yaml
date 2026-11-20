@@ -93,25 +93,34 @@ jobs:
           sudo apt-get install --yes build-essential clang cmake libomp-dev libopenmpi-dev ninja-build openmpi-bin
 
       - name: Configure
-        run: >-
-          CC=${{ matrix.config.cc }} CXX=${{ matrix.config.cxx }}
-          cmake -S AutoPasDM -B AutoPasDM/build-ci -G Ninja
-          -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }}
-          -DAUTOPAS_SOURCE_DIR="${GITHUB_WORKSPACE}/AutoPas"
-          -DAUTOPASDM_BUILD_EXAMPLES=ON
-          -DAUTOPASDM_BUILD_TESTS=ON
-          -DAUTOPAS_OPENMP=${{ matrix.config.omp }}
-          -DAUTOPAS_ENABLE_ADDRESS_SANITIZER=${{ matrix.config.asan }}
-          -DAUTOPAS_ENABLE_THREAD_SANITIZER=${{ matrix.config.tsan }}
-          -DAUTOPAS_INTERNODE_TUNING=ON
-          -DAUTOPAS_USE_AUTOVEC=OFF
-          -DMD_FLEXIBLE_MODE=${{ matrix.config.site }}
-          -DMD_FLEXIBLE_FUNCTOR_AUTOVEC=${{ matrix.config.autovec }}
-          -DMD_FLEXIBLE_FUNCTOR_AVX=${{ matrix.config.avx }}
-          -DMD_FLEXIBLE_FUNCTOR_HWY=${{ matrix.config.hwy }}
-          -DMD_FLEXIBLE_FUNCTOR_SVE=OFF
-          -DMD_FLEXIBLE_USE_MPI=ON
-          -DMD_FLEXIBLE_ENABLE_ALLLBL=OFF
+        run: |
+          sanitizer_link_flag=""
+          if [[ "${{ matrix.config.asan }}" == "ON" ]]; then
+            sanitizer_link_flag="-fsanitize=address"
+          elif [[ "${{ matrix.config.tsan }}" == "ON" ]]; then
+            sanitizer_link_flag="-fsanitize=thread"
+          fi
+
+          CC=${{ matrix.config.cc }} CXX=${{ matrix.config.cxx }} \
+          cmake -S AutoPasDM -B AutoPasDM/build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }} \
+            -DCMAKE_EXE_LINKER_FLAGS="${sanitizer_link_flag}" \
+            -DCMAKE_SHARED_LINKER_FLAGS="${sanitizer_link_flag}" \
+            -DAUTOPAS_SOURCE_DIR="${GITHUB_WORKSPACE}/AutoPas" \
+            -DAUTOPASDM_BUILD_EXAMPLES=ON \
+            -DAUTOPASDM_BUILD_TESTS=ON \
+            -DAUTOPAS_OPENMP=${{ matrix.config.omp }} \
+            -DAUTOPAS_ENABLE_ADDRESS_SANITIZER=${{ matrix.config.asan }} \
+            -DAUTOPAS_ENABLE_THREAD_SANITIZER=${{ matrix.config.tsan }} \
+            -DAUTOPAS_INTERNODE_TUNING=ON \
+            -DAUTOPAS_USE_AUTOVEC=OFF \
+            -DMD_FLEXIBLE_MODE=${{ matrix.config.site }} \
+            -DMD_FLEXIBLE_FUNCTOR_AUTOVEC=${{ matrix.config.autovec }} \
+            -DMD_FLEXIBLE_FUNCTOR_AVX=${{ matrix.config.avx }} \
+            -DMD_FLEXIBLE_FUNCTOR_HWY=${{ matrix.config.hwy }} \
+            -DMD_FLEXIBLE_FUNCTOR_SVE=OFF \
+            -DMD_FLEXIBLE_USE_MPI=ON \
+            -DMD_FLEXIBLE_ENABLE_ALLLBL=OFF
 
       - name: Build
         run: cmake --build AutoPasDM/build-ci --parallel 2
