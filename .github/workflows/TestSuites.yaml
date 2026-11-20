@@ -1,0 +1,127 @@
+name: TestSuites
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.mode }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [SINGLESITE, MULTISITE]
+    env:
+      OMPI_MCA_rmaps_base_oversubscribe: "1"
+    steps:
+      - name: Check out AutoPasDM
+        uses: actions/checkout@v4
+        with:
+          path: AutoPasDM
+
+      - name: Check out the tested AutoPas version
+        uses: actions/checkout@v4
+        with:
+          repository: AutoPas/AutoPas
+          ref: master
+          path: AutoPas
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential cmake libopenmpi-dev openmpi-bin
+
+      - name: Configure
+        run: >-
+          cmake -S AutoPasDM -B AutoPasDM/build-ci
+          -DAUTOPAS_SOURCE_DIR="${GITHUB_WORKSPACE}/AutoPas"
+          -DAUTOPASDM_BUILD_EXAMPLES=ON
+          -DAUTOPASDM_BUILD_TESTS=ON
+          -DAUTOPAS_INTERNODE_TUNING=ON
+          -DMD_FLEXIBLE_MODE=${{ matrix.mode }}
+          -DMD_FLEXIBLE_USE_MPI=ON
+
+      - name: Build
+        run: cmake --build AutoPasDM/build-ci --parallel 2
+
+      - name: Run all tests (single-site)
+        if: matrix.mode == 'SINGLESITE'
+        run: ctest --test-dir AutoPasDM/build-ci -C checkExamples --output-on-failure
+
+      - name: Run tests (multi-site)
+        if: matrix.mode == 'MULTISITE'
+        run: >-
+          ctest --test-dir AutoPasDM/build-ci -C checkExamples
+          --output-on-failure
+          -E '^md-flexible\.test-(sim|static)$'
+
+  style:
+    name: Style check
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out AutoPasDM
+        uses: actions/checkout@v4
+        with:
+          path: AutoPasDM
+
+      - name: Check out AutoPas
+        uses: actions/checkout@v4
+        with:
+          repository: AutoPas/AutoPas
+          ref: master
+          path: AutoPas
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-format-14 cmake libopenmpi-dev openmpi-bin
+
+      - name: Configure
+        run: >-
+          cmake -S AutoPasDM -B AutoPasDM/build-style
+          -DAUTOPAS_SOURCE_DIR="${GITHUB_WORKSPACE}/AutoPas"
+          -DAUTOPASDM_BUILD_EXAMPLES=OFF
+          -DAUTOPASDM_BUILD_TESTS=OFF
+
+      - name: Check formatting
+        run: |
+          cmake --build AutoPasDM/build-style --target autopasdm_clangformat
+          git -C AutoPasDM diff --check
+          git -C AutoPasDM diff --exit-code
+
+  documentation:
+    name: Documentation check
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out AutoPasDM
+        uses: actions/checkout@v4
+        with:
+          path: AutoPasDM
+
+      - name: Check out AutoPas
+        uses: actions/checkout@v4
+        with:
+          repository: AutoPas/AutoPas
+          ref: master
+          path: AutoPas
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cmake doxygen graphviz libopenmpi-dev openmpi-bin
+
+      - name: Configure documentation
+        run: >-
+          cmake -S AutoPasDM -B AutoPasDM/build-docs
+          -DAUTOPAS_SOURCE_DIR="${GITHUB_WORKSPACE}/AutoPas"
+          -DAUTOPASDM_BUILD_EXAMPLES=OFF
+          -DAUTOPASDM_BUILD_TESTS=OFF
+          -DAUTOPAS_BUILD_TARGET_DOC=ON
+
+      - name: Build API documentation
+        run: cmake --build AutoPasDM/build-docs --target doc_doxygen
