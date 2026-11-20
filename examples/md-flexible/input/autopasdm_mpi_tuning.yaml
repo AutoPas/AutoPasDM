@@ -9,7 +9,7 @@ functor: lennard-jones
 cutoff: 1.0
 verlet-skin-radius: 0.0
 tuning-strategies: [mpi-divide-and-conquer]
-tuning-interval: 1
+tuning-interval: 100
 tuning-samples: 1
 tuning-phases: 1
 
