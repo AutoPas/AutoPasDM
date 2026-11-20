@@ -3,7 +3,6 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <type_traits>
 #include <vector>
 
 #include "autopas/utils/ArrayMath.h"
@@ -88,6 +87,81 @@ concept SupportsMultisiteWall = requires(Particle &particle, ParticlePropertiesL
   particlePropertiesLibrary.getMoleculesLargestSigma(particle.getTypeId());
 };
 
+/**
+ * Apply the wall force for one particle, selecting the implementation from the APIs available on its types.
+ *
+ * Keeping this dispatch in a function template allows lightweight single-site test particles to be used even when
+ * the application itself is built with multisite support.
+ */
+template <class Particle, class ParticlePropertiesLibrary>
+void applyWallToParticle(Particle &particle, ParticlePropertiesLibrary &particlePropertiesLibrary,
+                         std::size_t dimension, double boundaryPosition, bool lowerBoundary) {
+  const auto moleculeType = particle.getTypeId();
+
+  if constexpr (SupportsMultisiteWall<Particle, ParticlePropertiesLibrary>) {
+    const auto currentForce = particle.getF();
+    const auto currentTorque = particle.getTorque();
+    const auto sitePositions = particlePropertiesLibrary.getSitePositions(moleculeType);
+    const auto siteTypes = particlePropertiesLibrary.getSiteTypes(moleculeType);
+    const auto rotatedSitePositions =
+        autopas::utils::quaternion::rotateVectorOfPositions(particle.getQuaternion(), sitePositions);
+
+    const auto distanceToBoundary = std::abs(particle.getR()[dimension] - boundaryPosition);
+    const auto largestSigma = particlePropertiesLibrary.getMoleculesLargestSigma(moleculeType);
+    if (distanceToBoundary >= sixthRootOfTwo * largestSigma * 0.5) {
+      return;
+    }
+
+    std::vector<std::array<double, 3>> exactSitePositions;
+    exactSitePositions.reserve(rotatedSitePositions.size());
+    for (const auto &rotatedSitePosition : rotatedSitePositions) {
+      exactSitePositions.push_back(autopas::utils::ArrayMath::add(particle.getR(), rotatedSitePosition));
+    }
+
+    std::vector<std::array<double, 3>> exactMirrorSitePositions;
+    exactMirrorSitePositions.reserve(exactSitePositions.size());
+    for (const auto &exactSitePosition : exactSitePositions) {
+      auto mirrorPosition = exactSitePosition;
+      const auto displacementToBoundary = boundaryPosition - exactSitePosition[dimension];
+      mirrorPosition[dimension] += 2. * displacementToBoundary;
+      exactMirrorSitePositions.push_back(mirrorPosition);
+    }
+
+    for (std::size_t site = 0; site < exactSitePositions.size(); ++site) {
+      for (std::size_t mirrorSite = 0; mirrorSite < exactMirrorSitePositions.size(); ++mirrorSite) {
+        // Keep the same site-type lookup as the reference md-flexible implementation.
+        const auto siteType = siteTypes[site];
+        const auto sigmaSquared = particlePropertiesLibrary.getMixingSigmaSquared(siteType, siteType);
+        const auto epsilon24 = particlePropertiesLibrary.getMixing24Epsilon(siteType, siteType);
+        const auto siteForce =
+            calculateLJForce(exactSitePositions[site], exactMirrorSitePositions[mirrorSite], sigmaSquared, epsilon24);
+        particle.addF(siteForce);
+        particle.addTorque(autopas::utils::ArrayMath::cross(rotatedSitePositions[site], siteForce));
+      }
+    }
+
+    const auto forceDifference = particle.getF()[dimension] - currentForce[dimension];
+    const bool reflectionIsAttractive = lowerBoundary ? forceDifference < 0. : forceDifference > 0.;
+    if (reflectionIsAttractive) {
+      particle.setF(currentForce);
+      particle.setTorque(currentTorque);
+    }
+  } else {
+    const auto position = particle.getR();
+    const auto siteType = particle.getTypeId();
+    const auto distanceToBoundary = std::abs(position[dimension] - boundaryPosition);
+    const auto sigma = particlePropertiesLibrary.getSigma(siteType);
+    const auto repulsiveWallDistance = sixthRootOfTwo * sigma * 0.5;
+    if (distanceToBoundary >= repulsiveWallDistance) {
+      return;
+    }
+
+    const auto sigmaSquared = particlePropertiesLibrary.getMixingSigmaSquared(siteType, siteType);
+    const auto epsilon24 = particlePropertiesLibrary.getMixing24Epsilon(siteType, siteType);
+    addMirrorForce(particle, position, dimension, boundaryPosition, sigmaSquared, epsilon24);
+  }
+}
+
 }  // namespace detail
 
 /**
@@ -125,70 +199,7 @@ void apply(Container &container, ParticlePropertiesLibrary &particlePropertiesLi
     }
 
     container.applyToOwnedParticlesInRegion(regionMin, regionMax, [&](auto &particle) {
-      const auto moleculeType = particle.getTypeId();
-
-      if constexpr (detail::SupportsMultisiteWall<std::remove_cvref_t<decltype(particle)>, ParticlePropertiesLibrary>) {
-        const auto currentForce = particle.getF();
-        const auto currentTorque = particle.getTorque();
-        const auto sitePositions = particlePropertiesLibrary.getSitePositions(moleculeType);
-        const auto siteTypes = particlePropertiesLibrary.getSiteTypes(moleculeType);
-        const auto rotatedSitePositions =
-            autopas::utils::quaternion::rotateVectorOfPositions(particle.getQuaternion(), sitePositions);
-
-        const auto distanceToBoundary = std::abs(particle.getR()[dimension] - boundaryPosition);
-        const auto largestSigma = particlePropertiesLibrary.getMoleculesLargestSigma(moleculeType);
-        if (distanceToBoundary >= detail::sixthRootOfTwo * largestSigma * 0.5) {
-          return;
-        }
-
-        std::vector<std::array<double, 3>> exactSitePositions;
-        exactSitePositions.reserve(rotatedSitePositions.size());
-        for (const auto &rotatedSitePosition : rotatedSitePositions) {
-          exactSitePositions.push_back(autopas::utils::ArrayMath::add(particle.getR(), rotatedSitePosition));
-        }
-
-        std::vector<std::array<double, 3>> exactMirrorSitePositions;
-        exactMirrorSitePositions.reserve(exactSitePositions.size());
-        for (const auto &exactSitePosition : exactSitePositions) {
-          auto mirrorPosition = exactSitePosition;
-          const auto displacementToBoundary = boundaryPosition - exactSitePosition[dimension];
-          mirrorPosition[dimension] += 2. * displacementToBoundary;
-          exactMirrorSitePositions.push_back(mirrorPosition);
-        }
-
-        for (std::size_t site = 0; site < exactSitePositions.size(); ++site) {
-          for (std::size_t mirrorSite = 0; mirrorSite < exactMirrorSitePositions.size(); ++mirrorSite) {
-            // Keep the same site-type lookup as the reference md-flexible implementation.
-            const auto siteType = siteTypes[site];
-            const auto sigmaSquared = particlePropertiesLibrary.getMixingSigmaSquared(siteType, siteType);
-            const auto epsilon24 = particlePropertiesLibrary.getMixing24Epsilon(siteType, siteType);
-            const auto siteForce = detail::calculateLJForce(
-                exactSitePositions[site], exactMirrorSitePositions[mirrorSite], sigmaSquared, epsilon24);
-            particle.addF(siteForce);
-            particle.addTorque(autopas::utils::ArrayMath::cross(rotatedSitePositions[site], siteForce));
-          }
-        }
-
-        const auto forceDifference = particle.getF()[dimension] - currentForce[dimension];
-        const bool reflectionIsAttractive = lowerBoundary ? forceDifference < 0. : forceDifference > 0.;
-        if (reflectionIsAttractive) {
-          particle.setF(currentForce);
-          particle.setTorque(currentTorque);
-        }
-      } else {
-        const auto position = particle.getR();
-        const auto siteType = particle.getTypeId();
-        const auto distanceToBoundary = std::abs(position[dimension] - boundaryPosition);
-        const auto sigma = particlePropertiesLibrary.getSigma(siteType);
-        const auto repulsiveWallDistance = detail::sixthRootOfTwo * sigma * 0.5;
-        if (distanceToBoundary >= repulsiveWallDistance) {
-          return;
-        }
-
-        const auto sigmaSquared = particlePropertiesLibrary.getMixingSigmaSquared(siteType, siteType);
-        const auto epsilon24 = particlePropertiesLibrary.getMixing24Epsilon(siteType, siteType);
-        detail::addMirrorForce(particle, position, dimension, boundaryPosition, sigmaSquared, epsilon24);
-      }
+      detail::applyWallToParticle(particle, particlePropertiesLibrary, dimension, boundaryPosition, lowerBoundary);
     });
   };
 
