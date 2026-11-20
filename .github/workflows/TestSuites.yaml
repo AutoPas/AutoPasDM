@@ -147,6 +147,9 @@ jobs:
 
       - name: Run non-MPI tests with ThreadSanitizer
         if: matrix.config.test_scope == 'tsan-unit'
+        env:
+          # Avoid PMIx shared-memory mappings conflicting with TSan's shadow memory.
+          PMIX_MCA_gds: hash
         run: >-
           ctest --test-dir AutoPasDM/build-ci -C checkExamples
           --output-on-failure
