@@ -190,7 +190,7 @@ jobs:
           executable="${GITHUB_WORKSPACE}/AutoPasDM/build-ci/examples/md-flexible/md-flexible"
           config="${GITHUB_WORKSPACE}/AutoPasDM/examples/md-flexible/input/autopasdm_reflective_compare.yaml"
           output_dir="${RUNNER_TEMP}/reflective-comparison"
-          mkdir -p "$output_dir"
+          mkdir -p "$output_dir/np1" "$output_dir/np8"
           mpirun -np 1 "$executable" --yaml-filename "$config" \
             --vtk-output-folder "$output_dir/np1"
           mpirun -np 8 "$executable" --yaml-filename "$config" \
