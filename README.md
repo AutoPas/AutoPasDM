@@ -135,10 +135,11 @@ ctest --test-dir build --output-on-failure
 ### md-flexible 3D force regression
 
 A small end-to-end regression input is available at
-`examples/md-flexible/input/autopasdm_force_compare_3d.yaml`. It compares a single-rank
-reference run with an eight-rank `2 x 2 x 2` decomposition and exercises internal
+`examples/md-flexible/input/autopasdm_force_compare_3d.yaml`. It exercises internal
 face, edge, and corner interactions as well as periodic boundaries in all three
-dimensions.
+dimensions. The force output can be compared across AutoPasDM decompositions as shown
+below. The same input is also used in CI to compare original md-flexible and AutoPasDM
+with eight MPI ranks.
 
 From `build/examples/md-flexible`:
 
@@ -159,8 +160,20 @@ python3 scripts/compare_vtk_forces.py \
   force_compare_3d/np8
 ```
 
-The comparison should report the same owned-particle IDs and forces within the
-configured tolerance.
+The decomposition comparison should report the same owned-particle IDs and forces
+within the configured tolerance. For an original-AutoPas-vs-AutoPasDM comparison, run
+from the repository root after building both MPI-enabled md-flexible executables:
+
+```bash
+python3 examples/md-flexible/scripts/run_md_flexible_comparison.py \
+  --reference /path/to/AutoPas/build/examples/md-flexible/md-flexible \
+  --distributed /path/to/AutoPasDM/build/examples/md-flexible/md-flexible \
+  --config examples/md-flexible/input/autopasdm_force_compare_3d.yaml \
+  --ranks 8
+```
+
+The comparison checks IDs, types, positions, velocities, and forces in the final
+output, without requiring the same owner rank.
 
 ### md-flexible load-balancing regression
 
@@ -180,6 +193,24 @@ python3 scripts/run_load_balancing_regression.py \
   --config input/autopasdm_load_balancing_compare.yaml \
   --ranks 8
 ```
+
+The regression uses the general `run_md_flexible_comparison.py` runner and additionally
+requires both load balancers to move at least one subdomain boundary.
+
+### md-flexible thermostat comparison
+
+CI compares the original one-rank thermostat run with a four-rank AutoPasDM run using
+`autopasdm_thermostat_compare.yaml`. It compares particle velocities and checks that
+both results reach the expected global temperature. The runner accepts different rank
+counts with `--reference-ranks` and `--distributed-ranks`.
+
+### md-flexible dynamic simulation comparison
+
+`examples/md-flexible/input/autopasdm_dynamic_compare.yaml` advances a small 3D system
+for 100 steps with a non-zero time step. Three particles cross internal MPI boundaries
+in x, y, and z, while another pair exercises Lennard-Jones force evaluation. CI runs
+this input with eight ranks in both implementations and compares the final global
+particle states by ID.
 
 ### md-flexible reflective-boundary regression
 
@@ -213,6 +244,20 @@ python3 scripts/check_reflective_forces.py reflective_compare/np8
 
 The first script checks decomposition independence. The second checks the forces
 against the analytical values of the reflective regression setup.
+
+The reflective Lennard-Jones wall force is an AutoPasDM application feature and is not
+implemented by the original md-flexible reference. CI therefore checks this path within
+AutoPasDM: it compares one-rank and eight-rank forces and checks the eight-rank result
+against the analytical wall forces.
+
+### md-flexible multi-site comparison
+
+`examples/md-flexible/input/autopasdm_multisite_compare.yaml` contains two tri-site
+molecules interacting across an internal rank corner. The short run exercises the
+multi-site force calculation, torque generation, and rotational integration. CI builds
+the original md-flexible reference in multi-site mode and compares the final molecular
+state with an eight-rank AutoPasDM run, including quaternions, angular velocities, and
+torques.
 
 The test build can be disabled with `-DAUTOPASDM_BUILD_TESTS=OFF`.
 

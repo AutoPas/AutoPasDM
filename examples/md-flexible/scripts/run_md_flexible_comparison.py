@@ -45,6 +45,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--distributed", required=True, type=Path, help="AutoPasDM md-flexible executable")
     parser.add_argument("--config", required=True, type=Path, help="YAML input shared by both runs")
     parser.add_argument("--ranks", type=int, default=8, help="MPI ranks (default: 8)")
+    parser.add_argument("--reference-ranks", type=int, help="Override the reference MPI rank count")
+    parser.add_argument("--distributed-ranks", type=int, help="Override the AutoPasDM MPI rank count")
     parser.add_argument(
         "--require-load-balancing",
         action="store_true",
@@ -105,6 +107,13 @@ def data_array(piece: ET.Element, name: str) -> list[str]:
     raise RuntimeError(f'DataArray "{name}" not found')
 
 
+def optional_data_array(piece: ET.Element, name: str) -> list[str] | None:
+    for element in piece.iter("DataArray"):
+        if element.attrib.get("Name") == name:
+            return (element.text or "").split()
+    return None
+
+
 def point_coordinates(piece: ET.Element) -> list[float]:
     points = next(piece.iter("Points"), None)
     if points is None:
@@ -151,28 +160,36 @@ def read_particle_state(root: Path) -> tuple[int, dict[int, dict[str, object]]]:
 
         ids = [int(value) for value in data_array(piece, "ids")]
         type_ids = [int(value) for value in data_array(piece, "typeIds")]
-        forces = [float(value) for value in data_array(piece, "forces")]
-        velocities = [float(value) for value in data_array(piece, "velocities")]
-        positions = point_coordinates(piece)
-
-        expected_vector_values = 3 * len(ids)
         if len(type_ids) != len(ids):
             raise RuntimeError(f"Type-ID/ID length mismatch in {filename}")
-        for values, name in ((forces, "force"), (velocities, "velocity"), (positions, "position")):
-            if len(values) != expected_vector_values:
-                raise RuntimeError(f"{name}/ID length mismatch in {filename}")
+
+        fields: dict[str, list[float]] = {"position": point_coordinates(piece)}
+        vector_arrays = {
+            "velocity": ("velocities", 3),
+            "force": ("forces", 3),
+            "quaternion": ("quaternions", 4),
+            "angularVelocity": ("angularVelocities", 3),
+            "torque": ("torques", 3),
+        }
+        for field, (array_name, components) in vector_arrays.items():
+            raw_values = optional_data_array(piece, array_name)
+            if raw_values is not None:
+                fields[field] = [float(value) for value in raw_values]
+
+        for field, values in fields.items():
+            components = 4 if field == "quaternion" else 3
+            if len(values) != components * len(ids):
+                raise RuntimeError(f"{field}/ID length mismatch in {filename}")
 
         for index, particle_id in enumerate(ids):
             if particle_id in result:
                 raise RuntimeError(f"Particle ID {particle_id} occurs more than once in final owned output")
-            begin = 3 * index
-            result[particle_id] = {
-                "rank": rank,
-                "type": type_ids[index],
-                "position": tuple(positions[begin : begin + 3]),
-                "velocity": tuple(velocities[begin : begin + 3]),
-                "force": tuple(forces[begin : begin + 3]),
-            }
+            particle_state: dict[str, object] = {"rank": rank, "type": type_ids[index]}
+            for field, values in fields.items():
+                components = 4 if field == "quaternion" else 3
+                begin = components * index
+                particle_state[field] = tuple(values[begin : begin + components])
+            result[particle_id] = particle_state
 
     return final_iteration, result
 
@@ -238,9 +255,19 @@ def compare_states(
         if expected["type"] != actual["type"]:
             failures.append(f"id={particle_id}: type {expected['type']} != {actual['type']}")
 
-        for field in ("position", "velocity", "force"):
+        for field in ("position", "velocity", "force", "quaternion", "angularVelocity", "torque"):
+            if (field in expected) != (field in actual):
+                failures.append(f"id={particle_id}: {field} is present in only one output")
+                continue
+            if field not in expected:
+                continue
             expected_vector = expected[field]
             actual_vector = actual[field]
+            if field == "quaternion":
+                direct_difference = max(abs(a - b) for a, b in zip(expected_vector, actual_vector))
+                negated_difference = max(abs(a + b) for a, b in zip(expected_vector, actual_vector))
+                if negated_difference < direct_difference:
+                    actual_vector = tuple(-component for component in actual_vector)
             for component, (a, b) in enumerate(zip(expected_vector, actual_vector)):
                 maximum_difference = max(maximum_difference, abs(a - b))
                 if not close(a, b, absolute_tolerance, relative_tolerance):
@@ -266,7 +293,10 @@ def main() -> int:
         reference = absolute_existing_file(args.reference, "Reference executable")
         distributed = absolute_existing_file(args.distributed, "Distributed executable")
         config = absolute_existing_file(args.config, "Configuration")
-        launcher = launcher_command(args.launcher, args.ranks)
+        reference_ranks = args.reference_ranks if args.reference_ranks is not None else args.ranks
+        distributed_ranks = args.distributed_ranks if args.distributed_ranks is not None else args.ranks
+        reference_launcher = launcher_command(args.launcher, reference_ranks)
+        distributed_launcher = launcher_command(args.launcher, distributed_ranks)
 
         if args.keep_output:
             work_root = args.keep_output.expanduser().resolve()
@@ -281,8 +311,8 @@ def main() -> int:
         reference_root = work_root / "reference"
         distributed_root = work_root / "distributed"
 
-        run_case("reference md-flexible", reference, config, reference_root, launcher)
-        run_case("AutoPasDM md-flexible", distributed, config, distributed_root, launcher)
+        run_case("reference md-flexible", reference, config, reference_root, reference_launcher)
+        run_case("AutoPasDM md-flexible", distributed, config, distributed_root, distributed_launcher)
 
         boundaries_ok = True
         if args.require_load_balancing:
