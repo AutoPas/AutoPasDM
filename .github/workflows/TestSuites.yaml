@@ -125,6 +125,31 @@ jobs:
       - name: Build
         run: cmake --build AutoPasDM/build-ci --parallel 2
 
+      - name: Build original md-flexible reference
+        if: matrix.config.name == 'GCC-Release-OMP-SingleSite'
+        run: |
+          CC=gcc CXX=g++ cmake -S AutoPas -B AutoPas/build-reference -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DAUTOPAS_BUILD_EXAMPLES=ON \
+            -DAUTOPAS_BUILD_TESTS=OFF \
+            -DAUTOPAS_BUILD_MD_LIBRARY=ON \
+            -DAUTOPAS_BUILD_SPH_LIBRARY=ON \
+            -DAUTOPAS_OPENMP=ON \
+            -DAUTOPAS_ENABLE_ENERGY_MEASUREMENTS=OFF \
+            -DAUTOPAS_INTERNODE_TUNING=ON \
+            -DMD_FLEXIBLE_MODE=SINGLESITE \
+            -DMD_FLEXIBLE_USE_MPI=ON
+          cmake --build AutoPas/build-reference --target md-flexible --parallel 2
+
+      - name: Compare AutoPas and AutoPasDM simulations
+        if: matrix.config.name == 'GCC-Release-OMP-SingleSite'
+        run: |
+          python3 AutoPasDM/examples/md-flexible/scripts/run_load_balancing_regression.py \
+            --reference AutoPas/build-reference/examples/md-flexible/md-flexible \
+            --distributed AutoPasDM/build-ci/examples/md-flexible/md-flexible \
+            --config AutoPasDM/examples/md-flexible/input/autopasdm_load_balancing_compare.yaml \
+            --ranks 8
+
       - name: Run full CTest suite
         if: matrix.config.test_scope == 'full'
         run: |
