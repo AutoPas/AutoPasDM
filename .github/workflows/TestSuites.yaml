@@ -212,6 +212,9 @@ jobs:
             -DAUTOPAS_ENABLE_ENERGY_MEASUREMENTS=OFF \
             -DAUTOPAS_INTERNODE_TUNING=ON \
             -DMD_FLEXIBLE_FUNCTOR_AUTOVEC=OFF \
+            -DMD_FLEXIBLE_FUNCTOR_AVX=OFF \
+            -DMD_FLEXIBLE_FUNCTOR_HWY=OFF \
+            -DMD_FLEXIBLE_FUNCTOR_SVE=OFF \
             -DMD_FLEXIBLE_MODE=MULTISITE \
             -DMD_FLEXIBLE_USE_MPI=ON
           cmake --build AutoPas/build-reference-multisite --target md-flexible --parallel 2
