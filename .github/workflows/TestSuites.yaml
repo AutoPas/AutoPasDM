@@ -151,6 +151,24 @@ jobs:
             --config AutoPasDM/examples/md-flexible/input/autopasdm_load_balancing_compare.yaml \
             --ranks 8
 
+      - name: Compare 3D forces between AutoPas and AutoPasDM
+        if: matrix.config.name == 'GCC-Release-OMP-SingleSite'
+        run: |
+          python3 AutoPasDM/examples/md-flexible/scripts/run_md_flexible_comparison.py \
+            --reference AutoPas/build-reference/examples/md-flexible/md-flexible \
+            --distributed AutoPasDM/build-ci/examples/md-flexible/md-flexible \
+            --config AutoPasDM/examples/md-flexible/input/autopasdm_force_compare_3d.yaml \
+            --ranks 8
+
+      - name: Compare dynamic simulations between AutoPas and AutoPasDM
+        if: matrix.config.name == 'GCC-Release-OMP-SingleSite'
+        run: |
+          python3 AutoPasDM/examples/md-flexible/scripts/run_md_flexible_comparison.py \
+            --reference AutoPas/build-reference/examples/md-flexible/md-flexible \
+            --distributed AutoPasDM/build-ci/examples/md-flexible/md-flexible \
+            --config AutoPasDM/examples/md-flexible/input/autopasdm_dynamic_compare.yaml \
+            --ranks 8
+
       - name: Run full CTest suite
         if: matrix.config.test_scope == 'full'
         run: |
