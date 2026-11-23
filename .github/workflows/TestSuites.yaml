@@ -137,6 +137,7 @@ jobs:
             -DAUTOPAS_OPENMP=ON \
             -DAUTOPAS_ENABLE_ENERGY_MEASUREMENTS=OFF \
             -DAUTOPAS_INTERNODE_TUNING=ON \
+            -DMD_FLEXIBLE_FUNCTOR_AUTOVEC=ON \
             -DMD_FLEXIBLE_MODE=SINGLESITE \
             -DMD_FLEXIBLE_USE_MPI=ON
           cmake --build AutoPas/build-reference --target md-flexible --parallel 2
