@@ -145,42 +145,42 @@ jobs:
       - name: Compare AutoPas and AutoPasDM simulations
         if: matrix.config.name == 'GCC-Release-OMP-SingleSite'
         run: |
-          python3 AutoPasDM/examples/md-flexible/scripts/run_load_balancing_regression.py \
+          python3 AutoPasDM/examples/md-flexible/tests/scripts/run_load_balancing_regression.py \
             --reference AutoPas/build-reference/examples/md-flexible/md-flexible \
             --distributed AutoPasDM/build-ci/examples/md-flexible/md-flexible \
-            --config AutoPasDM/examples/md-flexible/input/autopasdm_load_balancing_compare.yaml \
+            --config AutoPasDM/examples/md-flexible/tests/yamlTestFiles/autopasdm_load_balancing_compare.yaml \
             --ranks 8
 
       - name: Compare 3D forces between AutoPas and AutoPasDM
         if: matrix.config.name == 'GCC-Release-OMP-SingleSite'
         run: |
-          python3 AutoPasDM/examples/md-flexible/scripts/run_md_flexible_comparison.py \
+          python3 AutoPasDM/examples/md-flexible/tests/scripts/run_md_flexible_comparison.py \
             --reference AutoPas/build-reference/examples/md-flexible/md-flexible \
             --distributed AutoPasDM/build-ci/examples/md-flexible/md-flexible \
-            --config AutoPasDM/examples/md-flexible/input/autopasdm_force_compare_3d.yaml \
+            --config AutoPasDM/examples/md-flexible/tests/yamlTestFiles/autopasdm_force_compare_3d.yaml \
             --ranks 8
 
       - name: Compare dynamic simulations between AutoPas and AutoPasDM
         if: matrix.config.name == 'GCC-Release-OMP-SingleSite'
         run: |
-          python3 AutoPasDM/examples/md-flexible/scripts/run_md_flexible_comparison.py \
+          python3 AutoPasDM/examples/md-flexible/tests/scripts/run_md_flexible_comparison.py \
             --reference AutoPas/build-reference/examples/md-flexible/md-flexible \
             --distributed AutoPasDM/build-ci/examples/md-flexible/md-flexible \
-            --config AutoPasDM/examples/md-flexible/input/autopasdm_dynamic_compare.yaml \
+            --config AutoPasDM/examples/md-flexible/tests/yamlTestFiles/autopasdm_dynamic_compare.yaml \
             --ranks 8
 
       - name: Compare thermostat between AutoPas and AutoPasDM
         if: matrix.config.name == 'GCC-Release-OMP-SingleSite'
         run: |
           output_dir="${RUNNER_TEMP}/thermostat-comparison"
-          python3 AutoPasDM/examples/md-flexible/scripts/run_md_flexible_comparison.py \
+          python3 AutoPasDM/examples/md-flexible/tests/scripts/run_md_flexible_comparison.py \
             --reference AutoPas/build-reference/examples/md-flexible/md-flexible \
             --distributed AutoPasDM/build-ci/examples/md-flexible/md-flexible \
-            --config AutoPasDM/examples/md-flexible/input/autopasdm_thermostat_compare.yaml \
+            --config AutoPasDM/examples/md-flexible/tests/yamlTestFiles/autopasdm_thermostat_compare.yaml \
             --reference-ranks 1 \
             --distributed-ranks 4 \
             --keep-output "$output_dir"
-          python3 AutoPasDM/examples/md-flexible/scripts/compare_vtk_thermostat.py \
+          python3 AutoPasDM/examples/md-flexible/tests/scripts/compare_vtk_thermostat.py \
             "$output_dir/reference" "$output_dir/distributed"
 
       - name: Check reflective boundaries and wall forces
@@ -188,16 +188,16 @@ jobs:
         run: |
           set -euo pipefail
           executable="${GITHUB_WORKSPACE}/AutoPasDM/build-ci/examples/md-flexible/md-flexible"
-          config="${GITHUB_WORKSPACE}/AutoPasDM/examples/md-flexible/input/autopasdm_reflective_compare.yaml"
+          config="${GITHUB_WORKSPACE}/AutoPasDM/examples/md-flexible/tests/yamlTestFiles/autopasdm_reflective_compare.yaml"
           output_dir="${RUNNER_TEMP}/reflective-comparison"
           mkdir -p "$output_dir/np1" "$output_dir/np8"
           mpirun -np 1 "$executable" --yaml-filename "$config" \
             --vtk-output-folder "$output_dir/np1"
           mpirun -np 8 "$executable" --yaml-filename "$config" \
             --vtk-output-folder "$output_dir/np8"
-          python3 AutoPasDM/examples/md-flexible/scripts/compare_vtk_forces.py \
+          python3 AutoPasDM/examples/md-flexible/tests/scripts/compare_vtk_forces.py \
             "$output_dir/np1" "$output_dir/np8"
-          python3 AutoPasDM/examples/md-flexible/scripts/check_reflective_forces.py \
+          python3 AutoPasDM/examples/md-flexible/tests/scripts/check_reflective_forces.py \
             "$output_dir/np8"
 
       - name: Build original multi-site md-flexible reference
@@ -223,10 +223,10 @@ jobs:
       - name: Compare multi-site simulations between AutoPas and AutoPasDM
         if: matrix.config.name == 'GCC-Release-OMP-MultiSite'
         run: |
-          python3 AutoPasDM/examples/md-flexible/scripts/run_md_flexible_comparison.py \
+          python3 AutoPasDM/examples/md-flexible/tests/scripts/run_md_flexible_comparison.py \
             --reference AutoPas/build-reference-multisite/examples/md-flexible/md-flexible \
             --distributed AutoPasDM/build-ci/examples/md-flexible/md-flexible \
-            --config AutoPasDM/examples/md-flexible/input/autopasdm_multisite_compare.yaml \
+            --config AutoPasDM/examples/md-flexible/tests/yamlTestFiles/autopasdm_multisite_compare.yaml \
             --ranks 8
 
       - name: Run full CTest suite
