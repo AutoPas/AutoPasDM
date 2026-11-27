@@ -9,10 +9,10 @@ between implementations and runs. Instead this regression checks that
 2. the final owned-particle state agrees by particle ID within tolerance.
 
 Example:
-    python3 scripts/run_load_balancing_regression.py \
+    python3 tests/scripts/run_load_balancing_regression.py \
         --reference /path/to/AutoPas/build/examples/md-flexible/md-flexible \
         --distributed ./md-flexible \
-        --config input/autopasdm_load_balancing_compare.yaml \
+        --config tests/yamlTestFiles/autopasdm_load_balancing_compare.yaml \
         --ranks 8
 
 For SLURM, e.g. use:

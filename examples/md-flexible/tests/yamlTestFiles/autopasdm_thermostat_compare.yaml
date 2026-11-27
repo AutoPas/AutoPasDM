@@ -29,7 +29,7 @@ box-max: [8.6, 8.0, 8.0]
 deltaT: 0.000001
 iterations: 1
 
-boundary-type: [periodic, none, none]
+boundary-type: [none, none, none]
 subdivide-dimension: [true, false, false]
 load-balancer: None
 

@@ -1,0 +1,58 @@
+# Multi-site AutoPas-vs-AutoPasDM regression.
+#
+# Two three-site molecules interact across the internal x/y rank corner in an
+# eight-rank 2 x 2 x 2 decomposition. The off-center site forces generate
+# torques, so the run exercises translational and rotational integration.
+
+container: [DirectSum]
+traversal: [ds_sequential]
+data-layout: [AoS]
+newton3: [enabled]
+functor: lennard-jones
+
+cutoff: 2.0
+verlet-skin-radius: 0.0
+tuning-strategies: []
+tuning-phases: 0
+
+box-min: [0.0, 0.0, 0.0]
+box-max: [8.0, 8.0, 8.0]
+
+deltaT: 0.001
+iterations: 20
+
+boundary-type: [periodic, periodic, periodic]
+subdivide-dimension: [true, true, true]
+load-balancer: None
+
+vtk-filename: autoPasDMMultisiteCompare
+vtk-write-frequency: 20
+no-progress-bar: true
+no-end-config: true
+
+Sites:
+  0:
+    epsilon: 1.0
+    sigma: 0.6
+    mass: 1.0
+
+Molecules:
+  0:
+    site-types: [0, 0, 0]
+    relative-site-positions: [[0.4, 0.0, 0.0], [-0.2, 0.3464101615, 0.0], [-0.2, -0.3464101615, 0.0]]
+    moment-of-inertia: [0.24, 0.24, 0.48]
+
+Objects:
+  CubeGrid:
+    0:
+      particles-per-dimension: [1, 1, 1]
+      particle-spacing: 0.2
+      bottomLeftCorner: [3.4, 3.4, 3.5]
+      velocity: [0.0, 0.0, 0.0]
+      particle-type-id: 0
+    1:
+      particles-per-dimension: [1, 1, 1]
+      particle-spacing: 0.2
+      bottomLeftCorner: [4.6, 4.6, 3.5]
+      velocity: [0.0, 0.0, 0.0]
+      particle-type-id: 0
