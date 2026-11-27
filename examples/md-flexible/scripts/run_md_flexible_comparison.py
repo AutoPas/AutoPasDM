@@ -28,7 +28,6 @@ import os
 from pathlib import Path
 import re
 import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -63,7 +62,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--keep-output",
         type=Path,
-        help="Keep both run directories below this directory instead of deleting temporary output",
+        help=(
+            "Keep both run directories below this directory instead of deleting temporary output. "
+            "The destination must be absent or empty; existing contents are never removed."
+        ),
     )
     return parser.parse_args()
 
@@ -164,14 +166,18 @@ def read_particle_state(root: Path) -> tuple[int, dict[int, dict[str, object]]]:
             raise RuntimeError(f"Type-ID/ID length mismatch in {filename}")
 
         fields: dict[str, list[float]] = {"position": point_coordinates(piece)}
-        vector_arrays = {
+        required_vector_arrays = {
             "velocity": ("velocities", 3),
             "force": ("forces", 3),
+        }
+        optional_vector_arrays = {
             "quaternion": ("quaternions", 4),
             "angularVelocity": ("angularVelocities", 3),
             "torque": ("torques", 3),
         }
-        for field, (array_name, components) in vector_arrays.items():
+        for field, (array_name, _) in required_vector_arrays.items():
+            fields[field] = [float(value) for value in data_array(piece, array_name)]
+        for field, (array_name, _) in optional_vector_arrays.items():
             raw_values = optional_data_array(piece, array_name)
             if raw_values is not None:
                 fields[field] = [float(value) for value in raw_values]
@@ -301,8 +307,12 @@ def main() -> int:
         if args.keep_output:
             work_root = args.keep_output.expanduser().resolve()
             if work_root.exists():
-                shutil.rmtree(work_root)
-            work_root.mkdir(parents=True)
+                if not work_root.is_dir():
+                    raise RuntimeError(f"Output destination exists and is not a directory: {work_root}")
+                if next(work_root.iterdir(), None) is not None:
+                    raise RuntimeError(f"Output destination is not empty; refusing to overwrite: {work_root}")
+            else:
+                work_root.mkdir(parents=True)
             cleanup = None
         else:
             cleanup = tempfile.TemporaryDirectory(prefix="autopasdm_md_flexible_comparison_")
@@ -339,12 +349,18 @@ def main() -> int:
         print(f"  reference owned particles   : {len(ref_particles)}")
         print(f"  distributed owned particles : {len(autopasdm_particles)}")
 
-        states_ok, ownership_changes, maximum_difference = compare_states(
-            ref_particles,
-            autopasdm_particles,
-            args.absolute_tolerance,
-            args.relative_tolerance,
-        )
+        if ref_iteration != autopasdm_iteration:
+            print("FAIL: final iteration numbers differ; refusing to compare particle states.")
+            states_ok = False
+            ownership_changes = 0
+            maximum_difference = math.inf
+        else:
+            states_ok, ownership_changes, maximum_difference = compare_states(
+                ref_particles,
+                autopasdm_particles,
+                args.absolute_tolerance,
+                args.relative_tolerance,
+            )
         print(f"  particles owned by different ranks: {ownership_changes} (diagnostic only)")
         print(f"  maximum absolute component diff   : {maximum_difference:.12g}")
         print(f"  absolute tolerance                : {args.absolute_tolerance:.12g}")
