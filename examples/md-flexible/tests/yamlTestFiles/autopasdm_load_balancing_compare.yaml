@@ -1,6 +1,6 @@
 # Adaptive 3D regression shared by original md-flexible and AutoPasDM.
 #
-# Run both executables with 8 MPI ranks via scripts/run_load_balancing_regression.py.
+# Run both executables with 8 MPI ranks via tests/scripts/run_load_balancing_regression.py.
 # The deliberately dense lower-octant block makes the initial 2 x 2 x 2 grid
 # strongly imbalanced, so Inverted Pressure should move at least one boundary.
 #

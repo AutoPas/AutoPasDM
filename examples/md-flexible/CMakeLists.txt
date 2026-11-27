@@ -225,7 +225,7 @@ if(AUTOPASDM_BUILD_TESTS)
                 ${MPIEXEC_NUMPROC_FLAG} 2
                 ${MPIEXEC_PREFLAGS}
                 $<TARGET_FILE:md-flexible>
-                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/input/autopasdm_all_load_balancer.yaml"
+                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/tests/yamlTestFiles/autopasdm_all_load_balancer.yaml"
                 ${MPIEXEC_POSTFLAGS}
             CONFIGURATIONS checkExamples
         )
@@ -249,7 +249,7 @@ if(AUTOPASDM_BUILD_TESTS)
                 ${MPIEXEC_NUMPROC_FLAG} 2
                 ${MPIEXEC_PREFLAGS}
                 $<TARGET_FILE:md-flexible>
-                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/input/autopasdm_mpi_tuning.yaml"
+                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/tests/yamlTestFiles/autopasdm_mpi_tuning.yaml"
                 ${MPIEXEC_POSTFLAGS}
             CONFIGURATIONS checkExamples
         )
@@ -278,7 +278,7 @@ if(AUTOPASDM_BUILD_TESTS)
                 ${MPIEXEC_NUMPROC_FLAG} 2
                 ${MPIEXEC_PREFLAGS}
                 $<TARGET_FILE:md-flexible>
-                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/input/autopasdm_cli_checkpoint.yaml"
+                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/tests/yamlTestFiles/autopasdm_cli_checkpoint.yaml"
                 --vtk-filename autopasdm-cli-checkpoint
                 --vtk-output-folder "${MDFLEX_CHECKPOINT_TEST_OUTPUT_FOLDER}"
                 --vtk-write-frequency 1
@@ -303,7 +303,7 @@ if(AUTOPASDM_BUILD_TESTS)
                 ${MPIEXEC_NUMPROC_FLAG} 2
                 ${MPIEXEC_PREFLAGS}
                 $<TARGET_FILE:md-flexible>
-                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/input/autopasdm_cli_checkpoint_restart.yaml"
+                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/tests/yamlTestFiles/autopasdm_cli_checkpoint_restart.yaml"
                 --checkpoint "${MDFLEX_CHECKPOINT_TEST_FILE}"
                 --vtk-filename autopasdm-cli-checkpoint-restart
                 --vtk-output-folder "${MDFLEX_CHECKPOINT_TEST_OUTPUT_FOLDER}"
@@ -331,7 +331,7 @@ if(AUTOPASDM_BUILD_TESTS)
                 ${MPIEXEC_NUMPROC_FLAG} 1
                 ${MPIEXEC_PREFLAGS}
                 $<TARGET_FILE:md-flexible>
-                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/input/autopasdm_cli_checkpoint_restart.yaml"
+                --yaml-filename "${CMAKE_CURRENT_SOURCE_DIR}/tests/yamlTestFiles/autopasdm_cli_checkpoint_restart.yaml"
                 --checkpoint "${MDFLEX_CHECKPOINT_TEST_FILE}"
                 --vtk-filename autopasdm-cli-checkpoint-restart-one-rank
                 --vtk-output-folder "${MDFLEX_CHECKPOINT_TEST_OUTPUT_FOLDER}"

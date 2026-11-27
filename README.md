@@ -135,7 +135,7 @@ ctest --test-dir build --output-on-failure
 ### md-flexible 3D force regression
 
 A small end-to-end regression input is available at
-`examples/md-flexible/input/autopasdm_force_compare_3d.yaml`. It exercises internal
+`examples/md-flexible/tests/yamlTestFiles/autopasdm_force_compare_3d.yaml`. It exercises internal
 face, edge, and corner interactions as well as periodic boundaries in all three
 dimensions. The force output can be compared across AutoPasDM decompositions as shown
 below. The same input is also used in CI to compare original md-flexible and AutoPasDM
@@ -148,14 +148,14 @@ rm -rf force_compare_3d/np1 force_compare_3d/np8
 mkdir -p force_compare_3d/np1 force_compare_3d/np8
 
 ./md-flexible \
-  --yaml-filename input/autopasdm_force_compare_3d.yaml \
+  --yaml-filename ../../../examples/md-flexible/tests/yamlTestFiles/autopasdm_force_compare_3d.yaml \
   --vtk-output-folder force_compare_3d/np1
 
 mpirun -np 8 ./md-flexible \
-  --yaml-filename input/autopasdm_force_compare_3d.yaml \
+  --yaml-filename ../../../examples/md-flexible/tests/yamlTestFiles/autopasdm_force_compare_3d.yaml \
   --vtk-output-folder force_compare_3d/np8
 
-python3 scripts/compare_vtk_forces.py \
+python3 ../../../examples/md-flexible/tests/scripts/compare_vtk_forces.py \
   force_compare_3d/np1 \
   force_compare_3d/np8
 ```
@@ -165,10 +165,10 @@ within the configured tolerance. For an original-AutoPas-vs-AutoPasDM comparison
 from the repository root after building both MPI-enabled md-flexible executables:
 
 ```bash
-python3 examples/md-flexible/scripts/run_md_flexible_comparison.py \
+python3 examples/md-flexible/tests/scripts/run_md_flexible_comparison.py \
   --reference /path/to/AutoPas/build/examples/md-flexible/md-flexible \
   --distributed /path/to/AutoPasDM/build/examples/md-flexible/md-flexible \
-  --config examples/md-flexible/input/autopasdm_force_compare_3d.yaml \
+  --config examples/md-flexible/tests/yamlTestFiles/autopasdm_force_compare_3d.yaml \
   --ranks 8
 ```
 
@@ -177,8 +177,8 @@ output, without requiring the same owner rank.
 
 ### md-flexible load-balancing regression
 
-`examples/md-flexible/input/autopasdm_load_balancing_compare.yaml` and
-`scripts/run_load_balancing_regression.py` compare the bundled AutoPasDM
+`examples/md-flexible/tests/yamlTestFiles/autopasdm_load_balancing_compare.yaml` and
+`examples/md-flexible/tests/scripts/run_load_balancing_regression.py` compare the bundled AutoPasDM
 integration against an MPI-enabled original md-flexible build. Both decompositions
 must adapt and the final global particle state is compared independently of the exact
 owner rank, because runtime-based work measurements can produce different adaptive
@@ -187,10 +187,10 @@ split positions.
 For example:
 
 ```bash
-python3 scripts/run_load_balancing_regression.py \
+python3 examples/md-flexible/tests/scripts/run_load_balancing_regression.py \
   --reference /path/to/AutoPas/build/examples/md-flexible/md-flexible \
   --distributed ./md-flexible \
-  --config input/autopasdm_load_balancing_compare.yaml \
+  --config examples/md-flexible/tests/yamlTestFiles/autopasdm_load_balancing_compare.yaml \
   --ranks 8
 ```
 
@@ -200,13 +200,13 @@ requires both load balancers to move at least one subdomain boundary.
 ### md-flexible thermostat comparison
 
 CI compares the original one-rank thermostat run with a four-rank AutoPasDM run using
-`autopasdm_thermostat_compare.yaml`. It compares particle velocities and checks that
+`examples/md-flexible/tests/yamlTestFiles/autopasdm_thermostat_compare.yaml`. It compares particle velocities and checks that
 both results reach the expected global temperature. The runner accepts different rank
 counts with `--reference-ranks` and `--distributed-ranks`.
 
 ### md-flexible dynamic simulation comparison
 
-`examples/md-flexible/input/autopasdm_dynamic_compare.yaml` advances a small 3D system
+`examples/md-flexible/tests/yamlTestFiles/autopasdm_dynamic_compare.yaml` advances a small 3D system
 for 100 steps with a non-zero time step. Three particles cross internal MPI boundaries
 in x, y, and z, while another pair exercises Lennard-Jones force evaluation. CI runs
 this input with eight ranks in both implementations and compares the final global
@@ -215,7 +215,7 @@ particle states by ID.
 ### md-flexible reflective-boundary regression
 
 The single-site md-flexible example contains a reflective-wall regression input at
-`examples/md-flexible/input/autopasdm_reflective_compare.yaml`. It places particles near
+`examples/md-flexible/tests/yamlTestFiles/autopasdm_reflective_compare.yaml`. It places particles near
 all six global faces and two opposite corners. With sigma = epsilon = 1 and a wall
 distance of 0.5, the expected force component from each reflective wall is exactly
 24. The same setup can be compared between one rank and an eight-rank `2 x 2 x 2`
@@ -228,18 +228,18 @@ rm -rf reflective_compare/np1 reflective_compare/np8
 mkdir -p reflective_compare/np1 reflective_compare/np8
 
 ./md-flexible \
-  --yaml-filename input/autopasdm_reflective_compare.yaml \
+  --yaml-filename ../../../examples/md-flexible/tests/yamlTestFiles/autopasdm_reflective_compare.yaml \
   --vtk-output-folder reflective_compare/np1
 
 mpirun -np 8 ./md-flexible \
-  --yaml-filename input/autopasdm_reflective_compare.yaml \
+  --yaml-filename ../../../examples/md-flexible/tests/yamlTestFiles/autopasdm_reflective_compare.yaml \
   --vtk-output-folder reflective_compare/np8
 
-python3 scripts/compare_vtk_forces.py \
+python3 ../../../examples/md-flexible/tests/scripts/compare_vtk_forces.py \
   reflective_compare/np1 \
   reflective_compare/np8
 
-python3 scripts/check_reflective_forces.py reflective_compare/np8
+python3 ../../../examples/md-flexible/tests/scripts/check_reflective_forces.py reflective_compare/np8
 ```
 
 The first script checks decomposition independence. The second checks the forces
@@ -252,7 +252,7 @@ against the analytical wall forces.
 
 ### md-flexible multi-site comparison
 
-`examples/md-flexible/input/autopasdm_multisite_compare.yaml` contains two tri-site
+`examples/md-flexible/tests/yamlTestFiles/autopasdm_multisite_compare.yaml` contains two tri-site
 molecules interacting across an internal rank corner. The short run exercises the
 multi-site force calculation, torque generation, and rotational integration. CI builds
 the original md-flexible reference in multi-site mode and compares the final molecular

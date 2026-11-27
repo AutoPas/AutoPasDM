@@ -9,10 +9,10 @@ between implementations and runs. This regression checks that
 2. optionally, both runs actually move at least one subdomain boundary.
 
 Example:
-    python3 scripts/run_md_flexible_comparison.py \
+    python3 tests/scripts/run_md_flexible_comparison.py \
         --reference /path/to/AutoPas/build/examples/md-flexible/md-flexible \
         --distributed ./md-flexible \
-        --config input/autopasdm_load_balancing_compare.yaml \
+        --config tests/yamlTestFiles/autopasdm_load_balancing_compare.yaml \
         --ranks 8 --require-load-balancing
 
 For SLURM, e.g. use:
